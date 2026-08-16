@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
+  html,body{height:100%;margin:0;}
   :root{
     --sidebar:#15171a; --sidebar-hover:#232629; --sidebar-active:#0f3129;
     --topbar:#1c1f22;
@@ -40,6 +41,8 @@
   td{padding:15px 14px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--text);}
   tr.rowhover:hover{background:#faf9f6;cursor:pointer;}
   select.filt{background:#fff;border:1px solid var(--line-strong);color:var(--text2);padding:8px 12px;border-radius:8px;font-size:12.5px;outline:none;}
+  .dashcard{border-radius:16px;}
+  .dashcard::-webkit-resizer{background: linear-gradient(135deg, transparent 0 40%, var(--line-strong) 40% 50%, transparent 50% 60%, var(--line-strong) 60% 70%, transparent 70% 80%, var(--line-strong) 80% 90%, transparent 90%);}
   .cardhead{font-size:14px;font-weight:500;color:#33475b;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
   .pagetitle{font-family:'Oswald',sans-serif;font-size:25px;font-weight:600;color:var(--text);letter-spacing:0.01em;}
   .pagesub{font-size:13px;color:var(--text3);margin-top:4px;}
@@ -50,9 +53,9 @@
 
 <div id="connStatus">se conectează…</div>
 
-<div style="min-height:100vh;display:flex;flex-direction:column;">
+<div style="height:100vh;display:flex;flex-direction:column;overflow:hidden;">
 
-  <div style="background:var(--topbar);padding:16px 26px;display:flex;align-items:center;gap:18px;">
+  <div style="background:var(--topbar);padding:16px 26px;display:flex;align-items:center;gap:18px;flex-shrink:0;">
     <div style="font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;color:#fff;letter-spacing:0.03em;">BEZE</div>
     <input id="topSearch" type="text" placeholder="Caută un client sau un telefon..." style="flex:1;max-width:380px;background:#26292c;border:1px solid #34373a;color:#e8e7e0;padding:10px 14px;border-radius:9px;font-size:13px;outline:none;">
     <div style="margin-left:auto;display:flex;align-items:center;gap:18px;">
@@ -67,12 +70,12 @@
     </div>
   </div>
 
-  <div style="display:flex;flex:1;">
-    <div style="width:210px;flex-shrink:0;background:var(--sidebar);padding:20px 14px;display:flex;flex-direction:column;">
+  <div style="display:flex;flex:1;min-height:0;">
+    <div style="width:210px;flex-shrink:0;background:var(--sidebar);padding:20px 14px;display:flex;flex-direction:column;overflow-y:auto;">
       <div id="nav" style="display:flex;flex-direction:column;gap:3px;"></div>
       <div style="margin-top:auto;padding:12px;font-size:11.5px;color:#5c5b54;">evidență internă</div>
     </div>
-    <div style="flex:1;padding:32px 36px 40px;min-width:0;background:var(--bg);">
+    <div style="flex:1;padding:32px 36px 40px;min-width:0;background:var(--bg);overflow-y:auto;">
       <div id="page"></div>
     </div>
   </div>
@@ -237,6 +240,11 @@ const activityCol = collection(db, 'activity');
     surse:'Sursa clienților', oferteTimp:'Oferte create în timp',
     oferteEtapa:'Oferte după etapă', sarcini:'Sarcini restante', activitate:'Activitate recentă'
   };
+  const DEFAULT_DASH_SIZES = {
+    clientiNoi:{w:320,h:230}, clientiTimp:{w:460,h:300}, surse:{w:460,h:300},
+    oferteTimp:{w:460,h:280}, oferteEtapa:{w:460,h:280}, sarcini:{w:400,h:260}, activitate:{w:400,h:260}
+  };
+  const CARD_CHART_MAP = { clientiTimp:'overTime', surse:'sources', oferteTimp:'dealsTime', oferteEtapa:'dealStage' };
 
   function loadDashLayout(){
     try{
@@ -245,10 +253,11 @@ const activityCol = collection(db, 'activity');
         const parsed = JSON.parse(raw);
         const order = (parsed.order||[]).filter(k => DASH_TITLES[k]);
         DEFAULT_DASH_ORDER.forEach(k => { if(!order.includes(k)) order.push(k); });
-        return { order, hidden: Array.isArray(parsed.hidden) ? parsed.hidden.filter(k=>DASH_TITLES[k]) : [] };
+        const sizes = Object.assign({}, DEFAULT_DASH_SIZES, parsed.sizes||{});
+        return { order, hidden: Array.isArray(parsed.hidden) ? parsed.hidden.filter(k=>DASH_TITLES[k]) : [], sizes };
       }
     }catch(e){}
-    return { order: DEFAULT_DASH_ORDER.slice(), hidden: [] };
+    return { order: DEFAULT_DASH_ORDER.slice(), hidden: [], sizes: Object.assign({}, DEFAULT_DASH_SIZES) };
   }
   let dashLayout = loadDashLayout();
   function saveDashLayout(){ try{ localStorage.setItem(DASH_ORDER_KEY, JSON.stringify(dashLayout)); }catch(e){} }
@@ -261,17 +270,20 @@ const activityCol = collection(db, 'activity');
         '<div style="font-size:11px;color:var(--text3);letter-spacing:0.05em;">(NUMĂR) CLIENȚI</div>' +
         '<div style="font-size:40px;font-weight:600;color:#0d5c56;margin-top:6px;">' + newContactsThisMonth() + '</div>' +
       '</div>';
-    if(key==='clientiTimp') return cardTitle('Clienți adăugați în timp (cumulat)') +
-      minipill('Total lunar') +
-      '<div style="height:220px;margin-top:14px;"><canvas id="chartOverTime"></canvas></div>';
-    if(key==='surse') return cardTitle('Sursa clienților') +
-      minipill('Luna aceasta') +
+    if(key==='clientiTimp') return '<div style="display:flex;flex-direction:column;height:100%;">' +
+      cardTitle('Clienți adăugați în timp (cumulat)') + minipill('Total lunar') +
+      '<div style="flex:1;min-height:60px;margin-top:14px;"><canvas id="chartOverTime"></canvas></div>' +
+    '</div>';
+    if(key==='surse') return '<div style="display:flex;flex-direction:column;height:100%;">' +
+      cardTitle('Sursa clienților') + minipill('Luna aceasta') +
       '<div style="display:flex;align-items:center;gap:6px;margin:14px 0 6px;font-size:12px;color:var(--text2);"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;"></span>(Număr) Clienți</div>' +
-      '<div style="height:220px;"><canvas id="chartSources"></canvas></div>';
-    if(key==='oferteTimp') return cardTitle('Oferte create în timp') +
-      minipill('Luna aceasta · lunar') +
+      '<div style="flex:1;min-height:60px;"><canvas id="chartSources"></canvas></div>' +
+    '</div>';
+    if(key==='oferteTimp') return '<div style="display:flex;flex-direction:column;height:100%;">' +
+      cardTitle('Oferte create în timp') + minipill('Luna aceasta · lunar') +
       (noDeals ? emptyState('Fără date momentan. După ce adaugi oferte, le vei vedea aici.')
-               : '<div style="height:190px;margin-top:14px;"><canvas id="chartDealsTime"></canvas></div>');
+               : '<div style="flex:1;min-height:60px;margin-top:14px;"><canvas id="chartDealsTime"></canvas></div>') +
+    '</div>';
     if(key==='oferteEtapa') return cardTitle('Oferte după etapă') +
       minipill('Luna aceasta') +
       (noDeals ? emptyState('Fără date momentan. După ce adaugi oferte, le vei vedea aici.')
@@ -288,12 +300,13 @@ const activityCol = collection(db, 'activity');
   }
 
   function dashCardWrapper(key){
-    return '<div class="dashcard" draggable="true" data-key="'+key+'" style="position:relative;transition:opacity 0.15s;">' +
+    const size = dashLayout.sizes[key] || DEFAULT_DASH_SIZES[key] || {w:400,h:260};
+    return '<div class="dashcard" data-key="'+key+'" style="position:relative;width:'+size.w+'px;height:'+size.h+'px;min-width:240px;min-height:150px;max-width:100%;resize:both;overflow:hidden;transition:opacity 0.15s;">' +
       '<div style="position:absolute;top:18px;right:20px;display:flex;gap:10px;z-index:2;">' +
-        '<i class="ti ti-grip-vertical" style="cursor:grab;color:var(--line-strong);font-size:16px;" title="trage pentru a reordona" aria-hidden="true"></i>' +
+        '<i class="ti ti-grip-vertical" draggable="true" style="cursor:grab;color:var(--line-strong);font-size:16px;" title="trage pentru a reordona" aria-hidden="true"></i>' +
         '<i class="ti ti-x" data-hide="'+key+'" style="cursor:pointer;color:var(--text3);font-size:16px;" title="ascunde acest card" aria-hidden="true"></i>' +
       '</div>' +
-      hcard(dashCardInner(key)) +
+      hcard(dashCardInner(key), 'height:100%;box-sizing:border-box;overflow:auto;') +
     '</div>';
   }
 
@@ -316,12 +329,12 @@ const activityCol = collection(db, 'activity');
           '<option value="30d"' + (dashRange==='30d'?' selected':'') + '>Ultimele 30 zile</option>' +
           '<option value="all"' + (dashRange==='all'?' selected':'') + '>Tot timpul</option>' +
         '</select>' +
-        '<span style="font-size:11.5px;color:var(--text3);display:flex;align-items:center;gap:5px;"><i class="ti ti-arrows-move" aria-hidden="true"></i>trage cardurile ca să le rearanjezi</span>' +
+        '<span style="font-size:11.5px;color:var(--text3);display:flex;align-items:center;gap:5px;"><i class="ti ti-arrows-move" aria-hidden="true"></i>trage mânerul (☰) ca să reordonezi, colțul din dreapta-jos ca să redimensionezi</span>' +
         '<button id="resetLayoutBtn" class="btn" style="font-size:11.5px;padding:5px 10px;">resetează aspectul</button>' +
         '<i class="ti ti-refresh" id="refreshBtn" style="margin-left:auto;font-size:16px;color:var(--text3);cursor:pointer;" aria-hidden="true" title="Reîmprospătează"></i>' +
       '</div>' +
 
-      '<div id="dashCards" style="display:flex;flex-direction:column;gap:16px;">' +
+      '<div id="dashCards" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">' +
         visible.map(dashCardWrapper).join('') +
       '</div>' +
 
@@ -363,13 +376,16 @@ const activityCol = collection(db, 'activity');
     if(!container) return;
     let draggedKey = null;
     container.querySelectorAll('.dashcard').forEach(card => {
-      card.addEventListener('dragstart', () => { draggedKey = card.dataset.key; card.style.opacity = '0.4'; });
-      card.addEventListener('dragend', () => { card.style.opacity = '1'; });
-      card.addEventListener('dragover', (e) => { e.preventDefault(); card.style.borderTop = '2px solid var(--accent)'; });
-      card.addEventListener('dragleave', () => { card.style.borderTop = ''; });
+      const grip = card.querySelector('.ti-grip-vertical');
+      if(grip){
+        grip.addEventListener('dragstart', (e) => { draggedKey = card.dataset.key; card.style.opacity = '0.4'; e.dataTransfer.effectAllowed = 'move'; });
+        grip.addEventListener('dragend', () => { card.style.opacity = '1'; });
+      }
+      card.addEventListener('dragover', (e) => { e.preventDefault(); card.style.outline = '2px solid var(--accent)'; });
+      card.addEventListener('dragleave', () => { card.style.outline = ''; });
       card.addEventListener('drop', (e) => {
         e.preventDefault();
-        card.style.borderTop = '';
+        card.style.outline = '';
         const targetKey = card.dataset.key;
         if(!draggedKey || draggedKey===targetKey) return;
         const order = dashLayout.order.filter(k => k!==draggedKey);
@@ -395,10 +411,29 @@ const activityCol = collection(db, 'activity');
     });
     const resetBtn = document.getElementById('resetLayoutBtn');
     if(resetBtn) resetBtn.addEventListener('click', () => {
-      dashLayout = { order: DEFAULT_DASH_ORDER.slice(), hidden: [] };
+      dashLayout = { order: DEFAULT_DASH_ORDER.slice(), hidden: [], sizes: Object.assign({}, DEFAULT_DASH_SIZES) };
       saveDashLayout();
       renderPage();
     });
+  }
+
+  function wireDashCardResize(){
+    const container = document.getElementById('dashCards');
+    if(!container || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(entries => {
+      entries.forEach(entry => {
+        const card = entry.target;
+        const key = card.dataset.key;
+        if(!key) return;
+        const w = Math.round(entry.contentRect.width);
+        const h = Math.round(entry.contentRect.height);
+        dashLayout.sizes[key] = { w, h };
+        const chartKey = CARD_CHART_MAP[key];
+        if(chartKey && charts[chartKey]) charts[chartKey].resize();
+      });
+      saveDashLayout();
+    });
+    container.querySelectorAll('.dashcard').forEach(card => ro.observe(card));
   }
 
   function wireDashboard(){
@@ -406,7 +441,7 @@ const activityCol = collection(db, 'activity');
     document.getElementById('rangeSel').addEventListener('change', e => { dashRange = e.target.value; renderPage(); });
     document.getElementById('refreshBtn').addEventListener('click', () => renderPage());
     wireDashCardDrag();
-
+    wireDashCardResize();
     const dashedGrid = { color:'#eceae1', borderDash:[3,3] };
 
     try{
