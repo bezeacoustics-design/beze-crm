@@ -147,7 +147,7 @@ const activityCol = collection(db, 'activity');
   function maybeInitialRender(){
     if(loadedFlags.clients && loadedFlags.deals && loadedFlags.activity){
       setConnStatus('conectat · date live', true);
-      renderNav(); renderPage();
+      renderPage();
     }
   }
 
@@ -168,6 +168,8 @@ const activityCol = collection(db, 'activity');
     loadedFlags.activity = true;
     if(loadedFlags.clients && loadedFlags.deals) renderPage(); else maybeInitialRender();
   }, err => console.error(err));
+
+  renderNav();
 
   function renderNav(){
     const nav = document.getElementById('nav');
