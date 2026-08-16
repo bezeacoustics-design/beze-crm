@@ -137,6 +137,21 @@ const activityCol = collection(db, 'activity');
   function monthLabel(key){ const [y,m]=key.split('-'); const names=['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','noi','dec']; return names[parseInt(m,10)-1]+' '+y.slice(2); }
   function isThisMonth(iso){ if(!iso) return false; const d=new Date(iso), n=new Date(); return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth(); }
 
+  function digitsOnly(s){ return String(s||'').replace(/\D/g,''); }
+  function formatRoPhoneDigits(digits){
+    const d = String(digits||'').slice(0,9);
+    const parts = [];
+    if(d.length>0) parts.push(d.slice(0,3));
+    if(d.length>3) parts.push(d.slice(3,6));
+    if(d.length>6) parts.push(d.slice(6,9));
+    return parts.join(' ');
+  }
+  function extractPhoneDigitsForEdit(telefon){
+    let d = digitsOnly(telefon);
+    if(d.startsWith('40') && d.length>9) d = d.slice(2);
+    return d.slice(0,9);
+  }
+
   async function logActivity(text){
     try{ await addDoc(activityCol, { ts: new Date().toISOString(), text }); }catch(e){ console.error(e); }
   }
@@ -430,7 +445,7 @@ const activityCol = collection(db, 'activity');
     const fs = document.getElementById('filtSursa').value;
     const fst = document.getElementById('filtStatus').value;
     const filtered = clients.filter(c => {
-      if(q && !c.nume.toLowerCase().includes(q) && !(c.telefon||'').includes(q)) return false;
+      if(q && !c.nume.toLowerCase().includes(q) && !(c.telefon||'').toLowerCase().includes(q) && !digitsOnly(c.telefon).includes(digitsOnly(q))) return false;
       if(fl && monthKey(c.addedAt)!==fl) return false;
       if(fs && c.sursa!==fs) return false;
       if(fst==='da' && !c.contactat) return false;
@@ -604,7 +619,12 @@ const activityCol = collection(db, 'activity');
         '<button id="closeModal" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">&times;</button>' +
       '</div>' +
       field('Nume','f_nume', c?c.nume:'') +
-      field('Telefon','f_telefon', c?c.telefon:'') +
+      '<div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">Telefon</div>' +
+        '<div style="display:flex;align-items:center;gap:8px;">' +
+          '<span style="background:#f2f1ea;color:var(--text2);padding:9px 12px;border-radius:8px;font-size:13px;font-weight:500;flex-shrink:0;">+40</span>' +
+          '<input id="f_telefon" type="tel" inputmode="numeric" maxlength="11" placeholder="737 133 560" value="'+esc(formatRoPhoneDigits(c?extractPhoneDigitsForEdit(c.telefon):''))+'" style="flex:1;min-width:0;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;">' +
+        '</div>' +
+      '</div>' +
       field('Email','f_email', c?c.email:'') +
       selectField('Sursă','f_sursa', SURSE, c?c.sursa:'', true) +
       dimensionsField('Detalii spațiu', c) +
@@ -624,14 +644,19 @@ const activityCol = collection(db, 'activity');
     document.getElementById('cancelBtn').onclick = closeModal;
     document.getElementById('saveBtn').onclick = saveClient;
     if(c) document.getElementById('deleteBtn').onclick = () => deleteClient(c.id);
+    document.getElementById('f_telefon').addEventListener('input', (e) => {
+      e.target.value = formatRoPhoneDigits(digitsOnly(e.target.value));
+    });
   }
 
   async function saveClient(){
     const nume = document.getElementById('f_nume').value.trim();
-    const telefon = document.getElementById('f_telefon').value.trim();
+    const phoneDigits = digitsOnly(document.getElementById('f_telefon').value);
     const errEl = document.getElementById('formError');
-    if(!nume || !telefon){ errEl.textContent='completează numele și telefonul'; errEl.style.display='block'; return; }
+    if(!nume){ errEl.textContent='completează numele'; errEl.style.display='block'; return; }
+    if(phoneDigits.length!==9){ errEl.textContent='numărul trebuie să aibă 9 cifre după +40 (are '+phoneDigits.length+')'; errEl.style.display='block'; return; }
     errEl.style.display='none';
+    const telefon = '+40 ' + formatRoPhoneDigits(phoneDigits);
     const data = {
       nume, telefon,
       email: document.getElementById('f_email').value.trim(),
