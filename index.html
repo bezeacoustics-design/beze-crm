@@ -53,7 +53,24 @@
 
 <div id="connStatus">se conectează…</div>
 
-<div style="height:100vh;display:flex;flex-direction:column;overflow:hidden;">
+<div id="loginScreen" style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);">
+  <div style="background:#fff;border:1px solid var(--line-strong);border-radius:16px;padding:32px 30px;width:100%;max-width:340px;box-shadow:0 4px 24px rgba(0,0,0,0.06);">
+    <div style="font-family:'Oswald',sans-serif;font-size:19px;font-weight:600;color:var(--text);margin-bottom:4px;">BEZE CRM</div>
+    <div style="font-size:12.5px;color:var(--text3);margin-bottom:22px;">acces restricționat echipei</div>
+    <div style="margin-bottom:12px;">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:5px;">Email</div>
+      <input id="loginEmail" type="email" autocomplete="username" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:10px 12px;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box;">
+    </div>
+    <div style="margin-bottom:8px;">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:5px;">Parolă</div>
+      <input id="loginPassword" type="password" autocomplete="current-password" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:10px 12px;border-radius:8px;font-size:13px;outline:none;box-sizing:border-box;">
+    </div>
+    <div id="loginError" style="display:none;color:#a3372f;font-size:12px;margin-bottom:10px;"></div>
+    <button id="loginBtn" class="btn-primary" style="width:100%;margin-top:8px;">Intră</button>
+  </div>
+</div>
+
+<div id="appShell" style="display:none;height:100vh;flex-direction:column;overflow:hidden;">
 
   <div style="background:var(--topbar);padding:16px 26px;display:flex;align-items:center;gap:18px;flex-shrink:0;">
     <div style="font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;color:#fff;letter-spacing:0.03em;">BEZE</div>
@@ -63,9 +80,10 @@
       <i class="ti ti-bell" style="font-size:18px;color:#8f8e85;" aria-hidden="true" title="Notificări"></i>
       <i class="ti ti-settings" style="font-size:18px;color:#8f8e85;" aria-hidden="true" title="Setări"></i>
       <div style="width:1px;height:20px;background:#34373a;"></div>
-      <div style="display:flex;align-items:center;gap:9px;">
+      <div style="display:flex;align-items:center;gap:9px;cursor:pointer;" id="userMenu" title="Deconectează-te">
         <div style="width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:500;">BA</div>
-        <span style="font-size:13px;color:#cfcec5;">Beze Acoustics</span>
+        <span id="userEmailLabel" style="font-size:13px;color:#cfcec5;">Beze Acoustics</span>
+        <i class="ti ti-logout-2" style="font-size:15px;color:#8f8e85;" aria-hidden="true"></i>
       </div>
     </div>
   </div>
@@ -91,6 +109,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/fireba
 import {
   getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDU_QIv1zVKAbhlNDnWeg6ZaDTGvVaHuCs",
@@ -104,12 +125,14 @@ const firebaseConfig = {
 
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
+const auth = getAuth(fbApp);
 const clientsCol = collection(db, 'clients');
 const dealsCol = collection(db, 'deals');
 const activityCol = collection(db, 'activity');
 
 (function(){
   const NAV = [
+
     {key:'dashboard', label:'Acasă', icon:'ti-home'},
     {key:'clienti', label:'Clienți', icon:'ti-users'},
     {key:'oferte', label:'Oferte', icon:'ti-file-text'},
@@ -175,23 +198,29 @@ const activityCol = collection(db, 'activity');
     }
   }
 
-  onSnapshot(clientsCol, snap => {
-    clients = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
-    loadedFlags.clients = true;
-    if(loadedFlags.deals && loadedFlags.activity) renderPage(); else maybeInitialRender();
-  }, err => { console.error(err); setConnStatus('eroare conexiune', false); });
+  let listenersStarted = false;
+  function startListeners(){
+    if(listenersStarted) return;
+    listenersStarted = true;
 
-  onSnapshot(dealsCol, snap => {
-    deals = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
-    loadedFlags.deals = true;
-    if(loadedFlags.clients && loadedFlags.activity) renderPage(); else maybeInitialRender();
-  }, err => console.error(err));
+    onSnapshot(clientsCol, snap => {
+      clients = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+      loadedFlags.clients = true;
+      if(loadedFlags.deals && loadedFlags.activity) renderPage(); else maybeInitialRender();
+    }, err => { console.error(err); setConnStatus('eroare conexiune', false); });
 
-  onSnapshot(activityCol, snap => {
-    activity = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
-    loadedFlags.activity = true;
-    if(loadedFlags.clients && loadedFlags.deals) renderPage(); else maybeInitialRender();
-  }, err => console.error(err));
+    onSnapshot(dealsCol, snap => {
+      deals = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+      loadedFlags.deals = true;
+      if(loadedFlags.clients && loadedFlags.activity) renderPage(); else maybeInitialRender();
+    }, err => console.error(err));
+
+    onSnapshot(activityCol, snap => {
+      activity = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+      loadedFlags.activity = true;
+      if(loadedFlags.clients && loadedFlags.deals) renderPage(); else maybeInitialRender();
+    }, err => console.error(err));
+  }
 
   renderNav();
 
@@ -205,6 +234,45 @@ const activityCol = collection(db, 'activity');
   });
   document.addEventListener('mouseup', () => {
     setTimeout(() => { resizingKey = null; }, 80);
+  });
+
+  /* ---------- AUTH ---------- */
+  function showLogin(){
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('appShell').style.display = 'none';
+    document.getElementById('connStatus').style.display = 'none';
+  }
+  function showApp(user){
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appShell').style.display = 'flex';
+    document.getElementById('connStatus').style.display = 'block';
+    const label = document.getElementById('userEmailLabel');
+    if(label) label.textContent = user.email || 'Beze Acoustics';
+    startListeners();
+  }
+
+  onAuthStateChanged(auth, (user) => {
+    if(user) showApp(user); else showLogin();
+  });
+
+  document.getElementById('loginBtn').addEventListener('click', doLogin);
+  document.getElementById('loginPassword').addEventListener('keydown', (e) => { if(e.key==='Enter') doLogin(); });
+  document.getElementById('loginEmail').addEventListener('keydown', (e) => { if(e.key==='Enter') doLogin(); });
+
+  function doLogin(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const pass = document.getElementById('loginPassword').value;
+    const errEl = document.getElementById('loginError');
+    errEl.style.display = 'none';
+    if(!email || !pass){ errEl.textContent = 'completează email și parolă'; errEl.style.display = 'block'; return; }
+    signInWithEmailAndPassword(auth, email, pass).catch(err => {
+      errEl.textContent = 'email sau parolă incorecte';
+      errEl.style.display = 'block';
+    });
+  }
+
+  document.getElementById('userMenu').addEventListener('click', () => {
+    if(confirm('Te deconectezi din BEZE CRM?')) signOut(auth);
   });
 
   function renderNav(){
@@ -561,7 +629,10 @@ const activityCol = collection(db, 'activity');
     return (
       '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;gap:14px;">' +
         '<div><div class="pagetitle">Clienți</div><div class="pagesub">'+clients.length+' înregistrați</div></div>' +
-        '<button id="addBtn" class="btn-primary">+ client nou</button>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button id="exportBtn" class="btn"><i class="ti ti-download" aria-hidden="true"></i> exportă backup</button>' +
+          '<button id="addBtn" class="btn-primary">+ client nou</button>' +
+        '</div>' +
       '</div>' +
       '<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">' +
         '<input id="search" type="text" placeholder="caută nume sau telefon..." style="background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 13px;border-radius:9px;font-size:13px;width:210px;outline:none;">' +
@@ -581,11 +652,26 @@ const activityCol = collection(db, 'activity');
 
   function wireClients(){
     document.getElementById('addBtn').addEventListener('click', () => openClientModal(null));
+    document.getElementById('exportBtn').addEventListener('click', exportBackup);
     ['search','filtLuna','filtSursa','filtStatus'].forEach(id => document.getElementById(id).addEventListener('input', renderClientsTable));
     document.getElementById('filtLuna').addEventListener('change', renderClientsTable);
     document.getElementById('filtSursa').addEventListener('change', renderClientsTable);
     document.getElementById('filtStatus').addEventListener('change', renderClientsTable);
     renderClientsTable();
+  }
+
+  function exportBackup(){
+    const payload = { exportedAt: new Date().toISOString(), clients, deals, activity };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = 'beze-crm-backup-'+stamp+'.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   function renderClientsTable(){
@@ -833,6 +919,7 @@ const activityCol = collection(db, 'activity');
 
   async function deleteClient(id){
     const c = clients.find(x=>x.id===id);
+    if(!confirm('Ștergi definitiv clientul "'+(c?c.nume:'')+'"? Nu poate fi recuperat.')) return;
     await deleteDoc(doc(db,'clients',id));
     if(c) logActivity('Client șters: '+c.nume);
     closeModal();
@@ -895,6 +982,7 @@ const activityCol = collection(db, 'activity');
 
   async function deleteDeal(id){
     const d = deals.find(x=>x.id===id);
+    if(!confirm('Ștergi definitiv oferta pentru "'+(d?d.clientNume:'')+'"? Nu poate fi recuperată.')) return;
     await deleteDoc(doc(db,'deals',id));
     if(d) logActivity('Ofertă ștearsă — '+d.clientNume);
     closeModal();
