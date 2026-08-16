@@ -566,6 +566,14 @@ const activityCol = collection(db, 'activity');
       '<select id="'+id+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;">' +
       (withEmpty?'<option value="">–</option>':'') + opts + '</select></div>';
   }
+  function dimensionsField(label, c){
+    return '<div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">'+label+'</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<input id="f_latime" type="number" step="0.01" min="0" placeholder="Lățime (m)" value="'+esc(c&&c.latime!=null?c.latime:'')+'" style="flex:1;min-width:0;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 10px;border-radius:8px;font-size:13px;outline:none;">' +
+        '<input id="f_lungime" type="number" step="0.01" min="0" placeholder="Lungime (m)" value="'+esc(c&&c.lungime!=null?c.lungime:'')+'" style="flex:1;min-width:0;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 10px;border-radius:8px;font-size:13px;outline:none;">' +
+        '<input id="f_inaltime" type="number" step="0.01" min="0" placeholder="Înălțime (m)" value="'+esc(c&&c.inaltime!=null?c.inaltime:'')+'" style="flex:1;min-width:0;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 10px;border-radius:8px;font-size:13px;outline:none;">' +
+      '</div></div>';
+  }
 
   /* ---------- CLIENT MODAL ---------- */
   function openClientModal(id){
@@ -581,6 +589,7 @@ const activityCol = collection(db, 'activity');
       field('Telefon','f_telefon', c?c.telefon:'') +
       field('Email','f_email', c?c.email:'') +
       selectField('Sursă','f_sursa', SURSE, c?c.sursa:'', true) +
+      dimensionsField('Detalii spațiu', c) +
       textareaField('Nevoia clientului','f_nevoie', c?c.nevoie:'') +
       textareaField('Rezultatul discuției la telefon','f_rezultat', c?c.rezultat:'') +
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:4px 0;">' +
@@ -609,6 +618,9 @@ const activityCol = collection(db, 'activity');
       nume, telefon,
       email: document.getElementById('f_email').value.trim(),
       sursa: document.getElementById('f_sursa').value,
+      latime: document.getElementById('f_latime').value === '' ? null : parseFloat(document.getElementById('f_latime').value),
+      lungime: document.getElementById('f_lungime').value === '' ? null : parseFloat(document.getElementById('f_lungime').value),
+      inaltime: document.getElementById('f_inaltime').value === '' ? null : parseFloat(document.getElementById('f_inaltime').value),
       nevoie: document.getElementById('f_nevoie').value.trim(),
       rezultat: document.getElementById('f_rezultat').value.trim(),
       contactat: document.getElementById('f_contactat').checked,
