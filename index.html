@@ -32,7 +32,7 @@
   .btn:hover{background:#faf9f6;}
   .btn-primary{background:var(--accent);color:#fff;border:none;padding:11px 20px;border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;}
   .pill{font-size:12px;padding:4px 11px;border-radius:14px;font-weight:500;white-space:nowrap;}
-  th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);font-weight:500;padding:0 14px 12px;border-bottom:1px solid var(--line);}
+  th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);font-weight:500;padding:18px 14px 14px;border-bottom:1px solid var(--line);}
   td{padding:15px 14px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--text);}
   tr.rowhover:hover{background:#faf9f6;cursor:pointer;}
   select.filt{background:#fff;border:1px solid var(--line-strong);color:var(--text2);padding:8px 12px;border-radius:8px;font-size:12.5px;outline:none;}
@@ -218,26 +218,17 @@ const activityCol = collection(db, 'activity');
         '<div style="display:flex;align-items:center;gap:9px;">' +
           '<i class="ti ti-star" style="font-size:17px;color:var(--text3);" aria-hidden="true"></i>' +
           '<span class="pagetitle" style="font-size:21px;">Privire generală CRM</span>' +
-          '<i class="ti ti-chevron-down" style="font-size:15px;color:var(--text3);" aria-hidden="true"></i>' +
         '</div>' +
-        '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">' +
-          '<span style="font-size:12.5px;color:var(--text2);cursor:default;">Explorează rapoarte</span>' +
-          '<button class="btn">Creează dashboard</button>' +
-          '<button id="dashAddBtn" class="btn-primary">+ Client nou</button>' +
-          '<i class="ti ti-settings" style="font-size:16px;color:var(--text3);" aria-hidden="true"></i>' +
-        '</div>' +
+        '<button id="dashAddBtn" class="btn-primary">+ Client nou</button>' +
       '</div>' +
 
       '<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--line);">' +
-        '<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2);"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i>Filtre rapide</div>' +
-        '<button class="btn" style="border-radius:16px;">Proprietari <i class="ti ti-chevron-down" style="font-size:12px;" aria-hidden="true"></i></button>' +
+        '<span style="font-size:12.5px;color:var(--text2);">Interval:</span>' +
         '<select id="rangeSel" class="filt" style="border-radius:16px;">' +
           '<option value="month"' + (dashRange==='month'?' selected':'') + '>Luna aceasta</option>' +
           '<option value="30d"' + (dashRange==='30d'?' selected':'') + '>Ultimele 30 zile</option>' +
           '<option value="all"' + (dashRange==='all'?' selected':'') + '>Tot timpul</option>' +
         '</select>' +
-        '<div style="width:1px;height:16px;background:var(--line-strong);"></div>' +
-        '<span style="font-size:12.5px;color:var(--text2);display:flex;align-items:center;gap:6px;"><i class="ti ti-filter" aria-hidden="true"></i>Filtre avansate</span>' +
         '<i class="ti ti-refresh" id="refreshBtn" style="margin-left:auto;font-size:16px;color:var(--text3);cursor:pointer;" aria-hidden="true" title="Reîmprospătează"></i>' +
       '</div>' +
 
