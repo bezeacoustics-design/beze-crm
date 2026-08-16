@@ -308,7 +308,7 @@ const activityCol = collection(db, 'activity');
                      '<div style="margin-top:8px;color:var(--text3);">valoare activă (în lucru)</div><div style="font-size:16px;font-weight:500;color:var(--text);">' + fmtRon(activeDealsValue()) + '</div>' +
                    '</div>' +
                  '</div>');
-    if(key==='sarcini') return cardTitle('Sarcini restante') + '<div id="miniTasks" style="display:flex;flex-direction:column;gap:8px;"></div>';
+    if(key==='sarcini') return '<div style="display:flex;flex-direction:column;height:100%;">' + cardTitle('Sarcini restante') + '<div id="miniTasks" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow-y:auto;"></div></div>';
     if(key==='activitate') return cardTitle('Activitate recentă') + '<div id="miniActivity" style="display:flex;flex-direction:column;gap:8px;"></div>';
     return '';
   }
@@ -523,7 +523,7 @@ const activityCol = collection(db, 'activity');
 
     const miniTasks = document.getElementById('miniTasks');
     if(miniTasks){
-      const pendingTasks = getTasks().slice(0,4);
+      const pendingTasks = getTasks();
       if(pendingTasks.length===0){ miniTasks.innerHTML = '<div style="font-size:12px;color:var(--text3);">nimic restant</div>'; }
       pendingTasks.forEach(t => {
         const row = document.createElement('div');
