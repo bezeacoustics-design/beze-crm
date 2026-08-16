@@ -775,6 +775,7 @@ const activityCol = collection(db, 'activity');
         '</div>' +
       '</div>' +
       field('Email','f_email', c?c.email:'') +
+      field('Adresă','f_adresa', c?c.adresa:'') +
       selectField('Sursă','f_sursa', SURSE, c?c.sursa:'', true) +
       dimensionsField('Detalii spațiu', c) +
       textareaField('Nevoia clientului','f_nevoie', c?c.nevoie:'') +
@@ -809,6 +810,7 @@ const activityCol = collection(db, 'activity');
     const data = {
       nume, telefon,
       email: document.getElementById('f_email').value.trim(),
+      adresa: document.getElementById('f_adresa').value.trim(),
       sursa: document.getElementById('f_sursa').value,
       latime: document.getElementById('f_latime').value === '' ? null : parseFloat(document.getElementById('f_latime').value),
       lungime: document.getElementById('f_lungime').value === '' ? null : parseFloat(document.getElementById('f_lungime').value),
