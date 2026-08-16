@@ -137,7 +137,8 @@ const activityCol = collection(db, 'activity');
     {key:'clienti', label:'Clienți', icon:'ti-users'},
     {key:'oferte', label:'Oferte', icon:'ti-file-text'},
     {key:'sarcini', label:'Sarcini', icon:'ti-checklist'},
-    {key:'activitate', label:'Activitate', icon:'ti-history'}
+    {key:'activitate', label:'Activitate', icon:'ti-history'},
+    {key:'ghid', label:'Ghid', icon:'ti-headset'}
   ];
   const SURSE = ['Facebook Ads','Instagram Ads','Google Ads','Recomandare','Altele'];
   const STAGES = [
@@ -296,7 +297,8 @@ const activityCol = collection(db, 'activity');
     else if(currentView==='clienti'){ page.innerHTML = clientsHtml(); wireClients(); }
     else if(currentView==='oferte'){ page.innerHTML = dealsHtml(); wireDeals(); }
     else if(currentView==='sarcini'){ page.innerHTML = tasksHtml(); wireTasks(); }
-    else { page.innerHTML = activityHtml(); }
+    else if(currentView==='activitate'){ page.innerHTML = activityHtml(); }
+    else { page.innerHTML = ghidHtml(); wireGhid(); }
   }
 
   /* ---------- DASHBOARD ---------- */
@@ -622,6 +624,183 @@ const activityCol = collection(db, 'activity');
       const label = names[parseInt(m,10)-1] + ' ' + y;
       return '<option value="'+k+'">'+label.charAt(0).toUpperCase()+label.slice(1)+'</option>';
     }).join('');
+  }
+
+  /* ---------- GHID CONSULTANȚĂ ---------- */
+  const INTAKE_ORDER = ['Tip spațiu + scop', 'Dimensiuni', 'Materiale construcție / mobilier existent', 'Problema specifică', 'Poze', 'Buget'];
+
+  const CALL_STEPS = [
+    'Deschidere + context — te prezinți, reamintești de ce suni, ceri permisiunea ("aveți 5 minute acum?")',
+    'Întrebări de diagnostic, nu vânzare încă',
+    'Clarifică izolație fonică vs. tratament acustic — panourile NU opresc sunetul să treacă prin pereți, doar controlează ecoul din interior',
+    'Reflectă problema înapoi + explică principiul pe scurt — arată că ai ascultat',
+    'Propune un pas concret — vizită/măsurătoare, plan orientativ, sau recomandare de kit',
+    'Gestionează obiecțiile fără presiune — află ce anume îi reține',
+    'Închide cu un pas clar — dată/oră exactă de follow-up, nu "ne mai auzim"'
+  ];
+
+  const SPACE_GUIDES = {
+    studio: {
+      label: 'Studio', icon: 'ti-microphone-2', color: '#3576c9',
+      obiectiv: 'Monitorizare neutră — ce auzi la mixaj trebuie să fie exact ce e în fișier, nu colorat de cameră.',
+      rt60: 'Scurt, echilibrat pe toate frecvențele. Cameră "uscată", nu "live".',
+      ordine: ['Reflexii timpurii (tavan + pereți laterali)', 'Perete spate', 'Perete frontal', 'Colțuri', 'Reflexii târzii', 'Colțuri de tavan'],
+      reguli: [
+        'Simetrie critică — identică stânga/dreapta față de poziția de mix',
+        'Boxe: evită "zona periculoasă" SBIR — fie lipite de perete, fie la minim 90cm distanță (nu la mijloc)',
+        'Mai gros = mai jos în frecvență; spațiul de aer (air gap) dintre panou și perete crește mult performanța',
+        'Bass trapping agresiv, în toate colțurile, stivuit podea-tavan dacă spațiul permite',
+        'Difuzie minimă/deloc, se preferă absorbție',
+        '30-40% acoperire e suficientă pentru un rezultat bun — nu trebuie 100%'
+      ],
+      atentionari: [
+        'Panouri sub 10cm grosime prind doar high-mid, nu și sub ~120Hz — setează așteptări clare la bugete mici',
+        'Izolație fonică (vecini, bleed) e o discuție separată de tratamentul acustic',
+        'Nu menționa REW la primul apel — doar dacă clientul e serios/audiophile, ca pas 2'
+      ]
+    },
+    hifi: {
+      label: 'Hi-Fi', icon: 'ti-disc', color: '#1f8f72',
+      obiectiv: 'Experiență muzicală plăcută, naturală, cu imagine stereo precisă.',
+      rt60: 'Echilibrat, cu puțină "viață" păstrată — nu la fel de uscat ca un studio.',
+      ordine: ['Poziționare boxe + poziție de ascultare', 'Reflexii timpurii (laterale + tavan)', 'Colțuri (bass traps)', 'Perete spate'],
+      reguli: [
+        'Boxe în triunghi echilateral cu poziția de ascultare, toe-in ușor spre ascultător',
+        'Poziția scaunului la ~38% din lungimea camerei — evită centrul exact (acolo sunt cele mai puternice anulări de bas)',
+        'Simetrie: distanțe egale de la scaun la fiecare boxă / perete lateral',
+        '"Mirror trick" pentru reflexii: oglindă pe peretele lateral, te miști până vezi boxa — acolo pui panoul',
+        'Bass traps în toate cele 4 colțuri, stivuite podea-tavan dacă se poate',
+        'Difuzie valorizată, mai ales pe peretele spate'
+      ],
+      atentionari: [
+        'Foam nu ține jos în frecvență — rockwool/fibră densă e necesară pentru bas',
+        'Tratamentul complet e ideal, dar reflexii timpurii + colțuri + perete spate dau cel mai vizibil rezultat pentru bani'
+      ]
+    },
+    hometheater: {
+      label: 'Home Theater', icon: 'ti-device-tv', color: '#c94f8f',
+      obiectiv: 'Claritate dialog + impact cinematic, pentru mai multe scaune — nu un singur ascultător.',
+      rt60: 'Scurt, similar unui studio.',
+      ordine: ['Colțuri (fundația controlului de bas)', 'Pereți laterali + tavan (zona critică de dialog)', 'Perete spate (difuzie)', 'Perete frontal (bass trapping)'],
+      reguli: [
+        'Se tratează ZONE, nu puncte — sunt mai multe scaune și, în sisteme Atmos, 11+ boxe',
+        'Colțuri: cele mai mari/groase device-uri posibile',
+        'Pereți laterali + tavan între boxe și scaune = zona critică pentru claritatea dialogului',
+        'Perete spate: difuzie, nu absorbție totală — altfel camera "se simte mică"',
+        'Perete frontal (spatele ecranului): bass trapping, ideal cu tehnologie range-limited ca să nu omoare tot înaltul',
+        'Scaunele NU lipite de peretele din spate — acolo presiunea de bas e maximă'
+      ],
+      atentionari: [
+        'Subwoofere multiple + poziționare inteligentă ajută, dar nu înlocuiesc bass traps fizice',
+        'Nu confunda cu izolație fonică — tratamentul nu oprește vecinii/familia să audă filmul'
+      ]
+    },
+    comercial: {
+      label: 'Comercial', icon: 'ti-building-store', color: '#d98e4c',
+      obiectiv: 'Claritate vorbire, reducere oboseală — argument de business (productivitate), NU "sunet perfect".',
+      rt60: 'Redus, dar nu "mort" — țintă un nivel confortabil de conversație.',
+      ordine: ['Tavan (cea mai eficientă suprafață)', 'Acoperire uniformă pe toți pereții', 'Zone sensibile (săli de conferință, birouri) — tratament premium'],
+      reguli: [
+        'Tavanul e cel mai eficient loc de tratat — suprafață mare, aproape de toată lumea',
+        'Acoperire UNIFORMĂ pe toată camera — esențial de explicat clientului',
+        'Zone sensibile (săli de conferință, birouri de conducere) — tratament premium, motivat de confidențialitate + profesionalism',
+        'Panouri freestanding / gobo-uri utile între zone de lucru deschise'
+      ],
+      atentionari: [
+        'Un singur perete tratat lasă flutter echo pe restul — argument bun împotriva "vreau doar câteva panouri"',
+        'Vinde productivitate și claritate, nu acuratețe muzicală',
+        'Cost per m² contează mult — suprafețele sunt de obicei mari'
+      ]
+    },
+    podcast: {
+      label: 'Podcast', icon: 'ti-microphone', color: '#c0453f',
+      obiectiv: 'Claritate vocală, semnal "uscat"/necolorat — orice "viață" se adaugă în editare, nu se captează în cameră.',
+      rt60: 'Cel mai scurt dintre toate tipurile de spații.',
+      ordine: ['Tavan, direct deasupra microfonului', 'Colțuri (bass, chiar și pentru voce)', 'Pereți laterali, aproape de mic'],
+      reguli: [
+        'NU camera cea mai mică posibilă (tip dulap) — creează rezonanțe "boxy" greu de reparat în post',
+        'Frecvența fundamentală a vocii: ~100Hz bărbați, ~200Hz femei — lungimea de undă la 100Hz e 3.43m, se comportă ca un bas',
+        'Panouri minim ~10cm grosime, nu doar high-mid subțire de 5cm',
+        'Colțurile contează și aici, nu doar reflexiile de pe pereți',
+        'Mai mulți invitați: microfoanele orientate să nu se "audă" reciproc (zona surdă a unui cardioid e spatele lui)'
+      ],
+      atentionari: [
+        'NU recomanda difuzie — la 15-30cm de mic, reflexiile difuzate ajung aproape la fel de repede ca sunetul direct, deci colorează în loc să "aerisească"',
+        'Izolație fonică foarte importantă — zgomotul de fundal strică orice înregistrare',
+        'Cameră prea mică, tip dulap = greșeală comună de evitat la alegerea spațiului'
+      ]
+    }
+  };
+
+  let selectedSpace = null;
+
+  function ghidHtml(){
+    return (
+      '<div style="margin-bottom:18px;"><div class="pagetitle">Ghid consultanță</div><div class="pagesub">reper rapid pentru discuția cu clientul — alege tipul de spațiu</div></div>' +
+
+      '<div class="card" style="margin-bottom:16px;">' +
+        '<div class="cardhead"><i class="ti ti-list-numbers" aria-hidden="true"></i>Ordinea de întrebări pentru orice client</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+          INTAKE_ORDER.map((q,i) => '<span class="pill" style="background:var(--accent-bg);color:var(--accent-dark);">'+(i+1)+'. '+q+'</span>').join('') +
+        '</div>' +
+      '</div>' +
+
+      '<div class="card" style="margin-bottom:20px;">' +
+        '<div class="cardhead"><i class="ti ti-phone-call" aria-hidden="true"></i>Structura apelului</div>' +
+        '<div style="display:flex;flex-direction:column;gap:6px;">' +
+          CALL_STEPS.map((s,i) => '<div style="font-size:13px;color:var(--text2);"><span style="color:var(--accent-dark);font-weight:600;">'+(i+1)+'.</span> '+esc(s)+'</div>').join('') +
+        '</div>' +
+      '</div>' +
+
+      '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;" id="spaceButtons"></div>' +
+
+      '<div id="spaceContent"></div>'
+    );
+  }
+
+  function spaceButtonEl(key, g){
+    const btn = document.createElement('button');
+    const active = selectedSpace === key;
+    btn.style.cssText = 'flex:1;min-width:110px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border-radius:12px;cursor:pointer;border:2px solid '+(active?g.color:'var(--line-strong)')+';background:'+(active?g.color+'14':'#fff')+';transition:all 0.15s;';
+    btn.innerHTML = '<i class="ti '+g.icon+'" style="font-size:24px;color:'+g.color+';" aria-hidden="true"></i><span style="font-size:12.5px;font-weight:500;color:var(--text);">'+g.label+'</span>';
+    btn.addEventListener('click', () => { selectedSpace = key; renderPage(); });
+    return btn;
+  }
+
+  function spaceContentHtml(key){
+    const g = SPACE_GUIDES[key];
+    return (
+      '<div class="card" style="border-top:4px solid '+g.color+';">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">' +
+          '<i class="ti '+g.icon+'" style="font-size:22px;color:'+g.color+';" aria-hidden="true"></i>' +
+          '<span style="font-size:19px;font-weight:600;font-family:\'Oswald\',sans-serif;">'+g.label+'</span>' +
+        '</div>' +
+
+        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:4px;">Obiectiv / ce vinzi de fapt</div>' +
+        '<div style="font-size:14px;color:var(--text);">'+esc(g.obiectiv)+'</div></div>' +
+
+        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:4px;">RT60 țintă</div>' +
+        '<div style="font-size:14px;color:var(--text);">'+esc(g.rt60)+'</div></div>' +
+
+        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:8px;">Ordinea de tratament</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + g.ordine.map((o,i)=>'<span class="pill" style="background:'+g.color+'14;color:'+g.color+';">'+(i+1)+'. '+esc(o)+'</span>').join(' → ') + '</div></div>' +
+
+        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:8px;">Reguli cheie</div>' +
+        '<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">' + g.reguli.map(r=>'<li style="font-size:13.5px;color:var(--text2);">'+esc(r)+'</li>').join('') + '</ul></div>' +
+
+        '<div><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--warm-text);margin-bottom:8px;">⚠ Atenționări</div>' +
+        '<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">' + g.atentionari.map(a=>'<li style="font-size:13.5px;color:var(--text);">'+esc(a)+'</li>').join('') + '</ul></div>' +
+      '</div>'
+    );
+  }
+
+  function wireGhid(){
+    const btnRow = document.getElementById('spaceButtons');
+    Object.keys(SPACE_GUIDES).forEach(key => btnRow.appendChild(spaceButtonEl(key, SPACE_GUIDES[key])));
+    const contentEl = document.getElementById('spaceContent');
+    contentEl.innerHTML = selectedSpace
+      ? spaceContentHtml(selectedSpace)
+      : '<div class="card" style="text-align:center;color:var(--text3);padding:40px 20px;">alege un tip de spațiu mai sus</div>';
   }
 
   /* ---------- CLIENTI ---------- */
