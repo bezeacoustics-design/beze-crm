@@ -46,7 +46,7 @@
 
 <div id="connStatus">se conectează…</div>
 
-<div style="border-radius:16px;overflow:hidden;">
+<div style="min-height:100vh;display:flex;flex-direction:column;">
 
   <div style="background:var(--topbar);padding:16px 26px;display:flex;align-items:center;gap:18px;">
     <div style="font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;color:#fff;letter-spacing:0.03em;">BEZE</div>
@@ -63,7 +63,7 @@
     </div>
   </div>
 
-  <div style="display:flex;min-height:640px;">
+  <div style="display:flex;flex:1;">
     <div style="width:210px;flex-shrink:0;background:var(--sidebar);padding:20px 14px;display:flex;flex-direction:column;">
       <div id="nav" style="display:flex;flex-direction:column;gap:3px;"></div>
       <div style="margin-top:auto;padding:12px;font-size:11.5px;color:#5c5b54;">evidență internă</div>
@@ -378,6 +378,16 @@ const activityCol = collection(db, 'activity');
     });
   }
 
+  function monthFilterOptions(){
+    const names = ['ianuarie','februarie','martie','aprilie','mai','iunie','iulie','august','septembrie','octombrie','noiembrie','decembrie'];
+    const keys = Array.from(new Set(clients.map(c=>monthKey(c.addedAt)))).sort().reverse();
+    return keys.map(k => {
+      const [y,m] = k.split('-');
+      const label = names[parseInt(m,10)-1] + ' ' + y;
+      return '<option value="'+k+'">'+label.charAt(0).toUpperCase()+label.slice(1)+'</option>';
+    }).join('');
+  }
+
   /* ---------- CLIENTI ---------- */
   function clientsHtml(){
     return (
@@ -387,6 +397,7 @@ const activityCol = collection(db, 'activity');
       '</div>' +
       '<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">' +
         '<input id="search" type="text" placeholder="caută nume sau telefon..." style="background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 13px;border-radius:9px;font-size:13px;width:210px;outline:none;">' +
+        '<select id="filtLuna" class="filt"><option value="">toate lunile</option>' + monthFilterOptions() + '</select>' +
         '<select id="filtSursa" class="filt"><option value="">toate sursele</option>' + SURSE.map(s=>'<option value="'+s+'">'+s+'</option>').join('') + '</select>' +
         '<select id="filtStatus" class="filt"><option value="">toate statusurile</option><option value="da">contactat</option><option value="nu">de contactat</option></select>' +
       '</div>' +
@@ -402,7 +413,8 @@ const activityCol = collection(db, 'activity');
 
   function wireClients(){
     document.getElementById('addBtn').addEventListener('click', () => openClientModal(null));
-    ['search','filtSursa','filtStatus'].forEach(id => document.getElementById(id).addEventListener('input', renderClientsTable));
+    ['search','filtLuna','filtSursa','filtStatus'].forEach(id => document.getElementById(id).addEventListener('input', renderClientsTable));
+    document.getElementById('filtLuna').addEventListener('change', renderClientsTable);
     document.getElementById('filtSursa').addEventListener('change', renderClientsTable);
     document.getElementById('filtStatus').addEventListener('change', renderClientsTable);
     renderClientsTable();
@@ -410,10 +422,12 @@ const activityCol = collection(db, 'activity');
 
   function renderClientsTable(){
     const q = (document.getElementById('search').value||'').trim().toLowerCase();
+    const fl = document.getElementById('filtLuna').value;
     const fs = document.getElementById('filtSursa').value;
     const fst = document.getElementById('filtStatus').value;
     const filtered = clients.filter(c => {
       if(q && !c.nume.toLowerCase().includes(q) && !(c.telefon||'').includes(q)) return false;
+      if(fl && monthKey(c.addedAt)!==fl) return false;
       if(fs && c.sursa!==fs) return false;
       if(fst==='da' && !c.contactat) return false;
       if(fst==='nu' && c.contactat) return false;
