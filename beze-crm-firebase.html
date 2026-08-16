@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BEZE CRM</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Oswald:wght@500;600&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root{
+    --sidebar:#15171a; --sidebar-hover:#232629; --sidebar-active:#0f3129;
+    --topbar:#1c1f22;
+    --bg:#f4f4f1; --card:#ffffff; --line:#e3e1d8; --line-strong:#d1cfc2;
+    --text:#212019; --text2:#68675e; --text3:#98978a;
+    --accent:#1f8f72; --accent-dark:#0d4a3c; --accent-bg:#e2f3ee;
+    --warm:#d98e4c; --warm-bg:#fbf0e2; --warm-text:#9c5c17;
+    --blue:#3576c9; --blue-bg:#e5eefa;
+    --pink:#c94f8f; --pink-bg:#fbe6f1;
+    --red:#c0453f; --red-bg:#fbe8e6;
+    --green:#3f8f3f; --green-bg:#e7f4e3;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);}
+  body,input,select,textarea,button{font-family:'IBM Plex Sans',Arial,sans-serif;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .navitem{display:flex;align-items:center;gap:11px;padding:11px 14px;border-radius:9px;font-size:13.5px;color:#adaba0;cursor:pointer;}
+  .navitem:hover{background:var(--sidebar-hover);color:#fff;}
+  .navitem.active{background:var(--sidebar-active);color:#7fd9bd;}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px 28px;box-shadow:0 1px 2px rgba(20,20,15,0.04);}
+  .btn{border:1px solid var(--line-strong);background:#fff;color:var(--text2);padding:9px 16px;border-radius:9px;font-size:13px;cursor:pointer;}
+  .btn:hover{background:#faf9f6;}
+  .btn-primary{background:var(--accent);color:#fff;border:none;padding:11px 20px;border-radius:9px;font-size:13.5px;font-weight:500;cursor:pointer;}
+  .pill{font-size:12px;padding:4px 11px;border-radius:14px;font-weight:500;white-space:nowrap;}
+  th{text-align:left;font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);font-weight:500;padding:0 14px 12px;border-bottom:1px solid var(--line);}
+  td{padding:15px 14px;border-bottom:1px solid var(--line);font-size:13.5px;color:var(--text);}
+  tr.rowhover:hover{background:#faf9f6;cursor:pointer;}
+  select.filt{background:#fff;border:1px solid var(--line-strong);color:var(--text2);padding:8px 12px;border-radius:8px;font-size:12.5px;outline:none;}
+  .cardhead{font-size:14px;font-weight:500;color:#33475b;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
+  .pagetitle{font-family:'Oswald',sans-serif;font-size:25px;font-weight:600;color:var(--text);letter-spacing:0.01em;}
+  .pagesub{font-size:13px;color:var(--text3);margin-top:4px;}
+  #connStatus{position:fixed;bottom:14px;right:14px;font-size:11px;padding:6px 12px;border-radius:20px;background:#fff;border:1px solid var(--line-strong);color:var(--text3);z-index:100;}
+</style>
+</head>
+<body>
+
+<div id="connStatus">se conectează…</div>
+
+<div style="border-radius:16px;overflow:hidden;">
+
+  <div style="background:var(--topbar);padding:16px 26px;display:flex;align-items:center;gap:18px;">
+    <div style="font-family:'Oswald',sans-serif;font-size:16px;font-weight:600;color:#fff;letter-spacing:0.03em;">BEZE</div>
+    <input id="topSearch" type="text" placeholder="Caută un client sau un telefon..." style="flex:1;max-width:380px;background:#26292c;border:1px solid #34373a;color:#e8e7e0;padding:10px 14px;border-radius:9px;font-size:13px;outline:none;">
+    <div style="margin-left:auto;display:flex;align-items:center;gap:18px;">
+      <i class="ti ti-phone" style="font-size:18px;color:#8f8e85;" aria-hidden="true" title="Apeluri"></i>
+      <i class="ti ti-bell" style="font-size:18px;color:#8f8e85;" aria-hidden="true" title="Notificări"></i>
+      <i class="ti ti-settings" style="font-size:18px;color:#8f8e85;" aria-hidden="true" title="Setări"></i>
+      <div style="width:1px;height:20px;background:#34373a;"></div>
+      <div style="display:flex;align-items:center;gap:9px;">
+        <div style="width:26px;height:26px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:500;">BA</div>
+        <span style="font-size:13px;color:#cfcec5;">Beze Acoustics</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;min-height:640px;">
+    <div style="width:210px;flex-shrink:0;background:var(--sidebar);padding:20px 14px;display:flex;flex-direction:column;">
+      <div id="nav" style="display:flex;flex-direction:column;gap:3px;"></div>
+      <div style="margin-top:auto;padding:12px;font-size:11.5px;color:#5c5b54;">evidență internă</div>
+    </div>
+    <div style="flex:1;padding:32px 36px 40px;min-width:0;background:var(--bg);">
+      <div id="page"></div>
+    </div>
+  </div>
+
+</div>
+
+<div id="modalWrap" style="display:none;min-height:400px;position:fixed;inset:0;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;z-index:50;padding:16px;">
+  <div id="modal" style="background:var(--card);border:1px solid var(--line);border-radius:18px;padding:30px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,0.18);"></div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDU_QIv1zVKAbhlNDnWeg6ZaDTGvVaHuCs",
+  authDomain: "beze-intern.firebaseapp.com",
+  projectId: "beze-intern",
+  storageBucket: "beze-intern.firebasestorage.app",
+  messagingSenderId: "691595185314",
+  appId: "1:691595185314:web:afa816d669f9c4f1cd5bfb",
+  measurementId: "G-RGGX2KBJ18"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const clientsCol = collection(db, 'clients');
+const dealsCol = collection(db, 'deals');
+const activityCol = collection(db, 'activity');
+
+(function(){
+  const NAV = [
+    {key:'dashboard', label:'Acasă', icon:'ti-home'},
+    {key:'clienti', label:'Clienți', icon:'ti-users'},
+    {key:'oferte', label:'Oferte', icon:'ti-file-text'},
+    {key:'sarcini', label:'Sarcini', icon:'ti-checklist'},
+    {key:'activitate', label:'Activitate', icon:'ti-history'}
+  ];
+  const SURSE = ['Facebook Ads','Instagram Ads','Google Ads','Recomandare','Altele'];
+  const STAGES = [
+    {key:'lead_nou', label:'Lead nou', color:'var(--blue)', bg:'var(--blue-bg)'},
+    {key:'oferta_trimisa', label:'Ofertă trimisă', color:'var(--warm-text)', bg:'var(--warm-bg)'},
+    {key:'negociere', label:'Negociere', color:'var(--pink)', bg:'var(--pink-bg)'},
+    {key:'client', label:'Client (câștigat)', color:'var(--green)', bg:'var(--green-bg)'},
+    {key:'pierdut', label:'Pierdut', color:'var(--red)', bg:'var(--red-bg)'}
+  ];
+
+  let currentView = 'dashboard';
+  let clients = [], deals = [], activity = [];
+  let loadedFlags = {clients:false, deals:false, activity:false};
+  let editingClientId = null, editingDealId = null;
+  let dashRange = 'month';
+  let charts = {};
+
+  function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function fmtDate(iso){ if(!iso) return ''; const d=new Date(iso); return d.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+  function fmtDateTime(iso){ if(!iso) return ''; const d=new Date(iso); return d.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit'}) + ' · ' + d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}); }
+  function fmtRon(n){ return (Number(n)||0).toLocaleString('ro-RO') + ' RON'; }
+  function monthKey(iso){ const d=new Date(iso); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+  function monthLabel(key){ const [y,m]=key.split('-'); const names=['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','noi','dec']; return names[parseInt(m,10)-1]+' '+y.slice(2); }
+  function isThisMonth(iso){ if(!iso) return false; const d=new Date(iso), n=new Date(); return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth(); }
+
+  async function logActivity(text){
+    try{ await addDoc(activityCol, { ts: new Date().toISOString(), text }); }catch(e){ console.error(e); }
+  }
+
+  function setConnStatus(text, ok){
+    const el = document.getElementById('connStatus');
+    el.textContent = text;
+    el.style.color = ok ? 'var(--accent-dark)' : 'var(--text3)';
+    el.style.borderColor = ok ? 'var(--accent)' : 'var(--line-strong)';
+  }
+
+  function maybeInitialRender(){
+    if(loadedFlags.clients && loadedFlags.deals && loadedFlags.activity){
+      setConnStatus('conectat · date live', true);
+      renderNav(); renderPage();
+    }
+  }
+
+  onSnapshot(clientsCol, snap => {
+    clients = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+    loadedFlags.clients = true;
+    if(loadedFlags.deals && loadedFlags.activity) renderPage(); else maybeInitialRender();
+  }, err => { console.error(err); setConnStatus('eroare conexiune', false); });
+
+  onSnapshot(dealsCol, snap => {
+    deals = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+    loadedFlags.deals = true;
+    if(loadedFlags.clients && loadedFlags.activity) renderPage(); else maybeInitialRender();
+  }, err => console.error(err));
+
+  onSnapshot(activityCol, snap => {
+    activity = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+    loadedFlags.activity = true;
+    if(loadedFlags.clients && loadedFlags.deals) renderPage(); else maybeInitialRender();
+  }, err => console.error(err));
+
+  function renderNav(){
+    const nav = document.getElementById('nav');
+    nav.innerHTML = '';
+    NAV.forEach(n => {
+      const el = document.createElement('div');
+      el.className = 'navitem' + (currentView===n.key?' active':'');
+      el.innerHTML = '<i class="ti '+n.icon+'" style="font-size:15px;" aria-hidden="true"></i><span>'+n.label+'</span>';
+      el.addEventListener('click', () => { currentView=n.key; renderNav(); renderPage(); });
+      nav.appendChild(el);
+    });
+  }
+
+  function destroyCharts(){ Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}}); charts={}; }
+
+  function renderPage(){
+    destroyCharts();
+    const page = document.getElementById('page');
+    if(currentView==='dashboard'){ page.innerHTML = dashboardHtml(); wireDashboard(); }
+    else if(currentView==='clienti'){ page.innerHTML = clientsHtml(); wireClients(); }
+    else if(currentView==='oferte'){ page.innerHTML = dealsHtml(); wireDeals(); }
+    else if(currentView==='sarcini'){ page.innerHTML = tasksHtml(); wireTasks(); }
+    else { page.innerHTML = activityHtml(); }
+  }
+
+  /* ---------- DASHBOARD ---------- */
+  function hcard(inner, extraStyle){
+    return '<div style="background:#fff;border:1px solid var(--line-strong);border-radius:10px;padding:20px 22px;'+(extraStyle||'')+'">'+inner+'</div>';
+  }
+  function cardTitle(text){
+    return '<div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:500;color:#0d5c56;margin-bottom:10px;">'+text+'<i class="ti ti-info-circle" style="font-size:14px;color:var(--text3);" aria-hidden="true"></i></div>';
+  }
+  function minipill(text){
+    return '<span style="background:#f2f1ea;color:var(--text2);font-size:11.5px;font-weight:500;padding:4px 10px;border-radius:6px;">'+text+'</span>';
+  }
+  function emptyState(msg){
+    return '<div style="text-align:center;padding:30px 10px;color:var(--text3);font-size:12.5px;">'+
+      '<i class="ti ti-chart-arrows" style="font-size:26px;display:block;margin:0 auto 10px;color:var(--line-strong);" aria-hidden="true"></i>'+
+      msg + '</div>';
+  }
+
+  function dashboardHtml(){
+    const noDeals = deals.length === 0;
+    return (
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">' +
+        '<div style="display:flex;align-items:center;gap:9px;">' +
+          '<i class="ti ti-star" style="font-size:17px;color:var(--text3);" aria-hidden="true"></i>' +
+          '<span class="pagetitle" style="font-size:21px;">Privire generală CRM</span>' +
+          '<i class="ti ti-chevron-down" style="font-size:15px;color:var(--text3);" aria-hidden="true"></i>' +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">' +
+          '<span style="font-size:12.5px;color:var(--text2);cursor:default;">Explorează rapoarte</span>' +
+          '<button class="btn">Creează dashboard</button>' +
+          '<button id="dashAddBtn" class="btn-primary">+ Client nou</button>' +
+          '<i class="ti ti-settings" style="font-size:16px;color:var(--text3);" aria-hidden="true"></i>' +
+        '</div>' +
+      '</div>' +
+
+      '<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--line);">' +
+        '<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2);"><i class="ti ti-adjustments-horizontal" aria-hidden="true"></i>Filtre rapide</div>' +
+        '<button class="btn" style="border-radius:16px;">Proprietari <i class="ti ti-chevron-down" style="font-size:12px;" aria-hidden="true"></i></button>' +
+        '<select id="rangeSel" class="filt" style="border-radius:16px;">' +
+          '<option value="month"' + (dashRange==='month'?' selected':'') + '>Luna aceasta</option>' +
+          '<option value="30d"' + (dashRange==='30d'?' selected':'') + '>Ultimele 30 zile</option>' +
+          '<option value="all"' + (dashRange==='all'?' selected':'') + '>Tot timpul</option>' +
+        '</select>' +
+        '<div style="width:1px;height:16px;background:var(--line-strong);"></div>' +
+        '<span style="font-size:12.5px;color:var(--text2);display:flex;align-items:center;gap:6px;"><i class="ti ti-filter" aria-hidden="true"></i>Filtre avansate</span>' +
+        '<i class="ti ti-refresh" id="refreshBtn" style="margin-left:auto;font-size:16px;color:var(--text3);cursor:pointer;" aria-hidden="true" title="Reîmprospătează"></i>' +
+      '</div>' +
+
+      '<div style="display:grid;grid-template-columns:1fr 1.3fr;gap:16px;margin-bottom:16px;align-items:stretch;">' +
+        '<div style="display:flex;flex-direction:column;gap:16px;">' +
+          hcard(
+            cardTitle('Clienți noi') +
+            '<div style="display:flex;gap:6px;margin-bottom:18px;">' + minipill('Luna aceasta') + minipill('Comparat cu | Luna trecută') + '</div>' +
+            '<div style="text-align:center;padding:10px 0 4px;">' +
+              '<div style="font-size:11px;color:var(--text3);letter-spacing:0.05em;">(NUMĂR) CLIENȚI</div>' +
+              '<div style="font-size:40px;font-weight:600;color:#0d5c56;margin-top:6px;">' + newContactsThisMonth() + '</div>' +
+            '</div>'
+          ) +
+          hcard(
+            cardTitle('Clienți adăugați în timp (cumulat)') +
+            minipill('Total lunar') +
+            '<div style="height:150px;margin-top:14px;"><canvas id="chartOverTime"></canvas></div>'
+          ) +
+        '</div>' +
+        hcard(
+          cardTitle('Sursa clienților') +
+          minipill('Luna aceasta') +
+          '<div style="display:flex;align-items:center;gap:6px;margin:14px 0 6px;font-size:12px;color:var(--text2);"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;"></span>(Număr) Clienți</div>' +
+          '<div style="height:290px;"><canvas id="chartSources"></canvas></div>',
+          'display:flex;flex-direction:column;'
+        ) +
+      '</div>' +
+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">' +
+        hcard(
+          cardTitle('Oferte create în timp') +
+          minipill('Luna aceasta · lunar') +
+          (noDeals
+            ? emptyState('Fără date momentan. După ce adaugi oferte, le vei vedea aici.')
+            : '<div style="height:190px;margin-top:14px;"><canvas id="chartDealsTime"></canvas></div>')
+        ) +
+        hcard(
+          cardTitle('Oferte după etapă') +
+          minipill('Luna aceasta') +
+          (noDeals
+            ? emptyState('Fără date momentan. După ce adaugi oferte, le vei vedea aici.')
+            : '<div style="display:flex;gap:20px;align-items:center;margin-top:14px;">' +
+                '<div style="width:140px;height:140px;flex-shrink:0;"><canvas id="chartDealStage"></canvas></div>' +
+                '<div style="font-size:12px;">' + dealStageLegend() + '<div style="margin-top:10px;color:var(--text3);">valoare activă</div><div style="font-size:17px;font-weight:500;color:var(--text);">' + fmtRon(activeDealsValue()) + '</div></div>' +
+              '</div>')
+        ) +
+      '</div>' +
+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">' +
+        hcard(cardTitle('Sarcini restante') + '<div id="miniTasks" style="display:flex;flex-direction:column;gap:8px;"></div>') +
+        hcard(cardTitle('Activitate recentă') + '<div id="miniActivity" style="display:flex;flex-direction:column;gap:8px;"></div>') +
+      '</div>'
+    );
+  }
+
+  function newContactsThisMonth(){ return clients.filter(c=>isThisMonth(c.addedAt)).length; }
+
+  function activeDealsValue(){
+    return deals.filter(d => d.etapa!=='client' && d.etapa!=='pierdut').reduce((s,d)=>s+(Number(d.valoare)||0),0);
+  }
+
+  function sourceCounts(){
+    const bySrc = {};
+    clients.forEach(c => { const s=c.sursa||'Necunoscut'; bySrc[s]=(bySrc[s]||0)+1; });
+    return bySrc;
+  }
+
+  const stageColors = ['#3576c9','#d98e4c','#c94f8f','#3f8f3f','#c0453f'];
+  function dealStageLegend(){
+    return STAGES.map((s,i) => {
+      const ct = deals.filter(d=>d.etapa===s.key).length;
+      if(!ct) return '';
+      return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><span style="width:8px;height:8px;border-radius:50%;background:'+stageColors[i]+';display:inline-block;"></span><span style="color:var(--text2);">'+s.label+': '+ct+'</span></div>';
+    }).join('');
+  }
+
+  function wireDashboard(){
+    document.getElementById('dashAddBtn').addEventListener('click', () => openClientModal(null));
+    document.getElementById('rangeSel').addEventListener('change', e => { dashRange = e.target.value; renderPage(); });
+    document.getElementById('refreshBtn').addEventListener('click', () => renderPage());
+
+    const dashedGrid = { color:'#eceae1', borderDash:[3,3] };
+
+    const now = new Date();
+    const year = now.getFullYear();
+    let running = clients.filter(c => new Date(c.addedAt).getFullYear() < year).length;
+    const cumLabels = [], cumData = [];
+    for(let m=0; m<=now.getMonth(); m++){
+      const countThisMonth = clients.filter(c => { const d=new Date(c.addedAt); return d.getFullYear()===year && d.getMonth()===m; }).length;
+      running += countThisMonth;
+      cumLabels.push(monthLabel(year+'-'+String(m+1).padStart(2,'0')));
+      cumData.push(running);
+    }
+    charts.overTime = new Chart(document.getElementById('chartOverTime'), {
+      type:'line',
+      data:{ labels: cumLabels, datasets:[{ data: cumData, borderColor:'#1f8f72', backgroundColor:'rgba(31,143,114,0.1)', fill:true, tension:0.2, pointRadius:3, pointBackgroundColor:'#1f8f72' }] },
+      options:{ plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, ticks:{precision:0, font:{size:11}}, grid:dashedGrid }, x:{ grid:{display:false}, ticks:{font:{size:11}} } }, responsive:true, maintainAspectRatio:false }
+    });
+
+    const bySrc = sourceCounts();
+    const sk = Object.keys(bySrc);
+    charts.sources = new Chart(document.getElementById('chartSources'), {
+      type:'bar',
+      data:{ labels: sk, datasets:[{ label:'Clienți', data: sk.map(k=>bySrc[k]), backgroundColor:'#1f8f72', borderRadius:0, maxBarThickness:60 }] },
+      options:{ plugins:{legend:{display:false}}, scales:{
+        y:{ beginAtZero:true, ticks:{precision:0, font:{size:11}}, grid:dashedGrid, title:{display:true, text:'(Număr) Clienți', font:{size:11}} },
+        x:{ grid:{display:false}, ticks:{font:{size:11}}, title:{display:true, text:'Sursă', font:{size:11}} }
+      }, responsive:true, maintainAspectRatio:false }
+    });
+
+    if(deals.length){
+      const byDealMonth = {};
+      deals.forEach(d => { const k=monthKey(d.createdAt); byDealMonth[k]=(byDealMonth[k]||0)+1; });
+      const dmk = Object.keys(byDealMonth).sort();
+      charts.dealsTime = new Chart(document.getElementById('chartDealsTime'), {
+        type:'line',
+        data:{ labels: dmk.map(monthLabel), datasets:[{ data: dmk.map(k=>byDealMonth[k]), borderColor:'#3576c9', backgroundColor:'rgba(53,118,201,0.1)', fill:true, tension:0.2, pointRadius:3 }] },
+        options:{ plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true,ticks:{precision:0,font:{size:11}}, grid:dashedGrid}, x:{grid:{display:false}, ticks:{font:{size:11}}} }, responsive:true, maintainAspectRatio:false }
+      });
+
+      const stageCounts = STAGES.map(s => deals.filter(d=>d.etapa===s.key).length);
+      charts.dealStage = new Chart(document.getElementById('chartDealStage'), {
+        type:'doughnut',
+        data:{ labels: STAGES.map(s=>s.label), datasets:[{ data: stageCounts, backgroundColor: stageColors, borderWidth:0 }] },
+        options:{ plugins:{legend:{display:false}}, responsive:true, maintainAspectRatio:false, cutout:'65%' }
+      });
+    }
+
+    const miniTasks = document.getElementById('miniTasks');
+    const pendingTasks = getTasks().slice(0,4);
+    if(pendingTasks.length===0){ miniTasks.innerHTML = '<div style="font-size:12px;color:var(--text3);">nimic restant</div>'; }
+    pendingTasks.forEach(t => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;justify-content:space-between;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);';
+      row.innerHTML = '<span>'+esc(t.label)+'</span><span style="color:var(--text3);">'+esc(t.sub)+'</span>';
+      miniTasks.appendChild(row);
+    });
+
+    const miniAct = document.getElementById('miniActivity');
+    const recentAct = activity.slice().sort((a,b)=>(b.ts||'').localeCompare(a.ts||'')).slice(0,4);
+    if(recentAct.length===0){ miniAct.innerHTML = '<div style="font-size:12px;color:var(--text3);">nicio activitate încă</div>'; }
+    recentAct.forEach(a => {
+      const row = document.createElement('div');
+      row.style.cssText = 'font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--text2);';
+      row.innerHTML = esc(a.text) + '<div style="font-size:11px;color:var(--text3);margin-top:1px;">'+fmtDateTime(a.ts)+'</div>';
+      miniAct.appendChild(row);
+    });
+  }
+
+  /* ---------- CLIENTI ---------- */
+  function clientsHtml(){
+    return (
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;gap:14px;">' +
+        '<div><div class="pagetitle">Clienți</div><div class="pagesub">'+clients.length+' înregistrați</div></div>' +
+        '<button id="addBtn" class="btn-primary">+ client nou</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">' +
+        '<input id="search" type="text" placeholder="caută nume sau telefon..." style="background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 13px;border-radius:9px;font-size:13px;width:210px;outline:none;">' +
+        '<select id="filtSursa" class="filt"><option value="">toate sursele</option>' + SURSE.map(s=>'<option value="'+s+'">'+s+'</option>').join('') + '</select>' +
+        '<select id="filtStatus" class="filt"><option value="">toate statusurile</option><option value="da">contactat</option><option value="nu">de contactat</option></select>' +
+      '</div>' +
+      '<div class="card" style="padding:0;overflow:hidden;">' +
+        '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">' +
+          '<thead><tr><th style="padding-left:24px;">Nume</th><th>Telefon</th><th>Email</th><th>Sursă</th><th>Nevoie</th><th>Status</th><th style="padding-right:24px;">Adăugat</th></tr></thead>' +
+          '<tbody id="tbody"></tbody>' +
+        '</table></div>' +
+        '<div id="empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text3);"><div style="font-size:15px;">niciun client încă</div><div style="font-size:13px;margin-top:6px;">adaugă primul contact din formularele de reclame</div></div>' +
+      '</div>'
+    );
+  }
+
+  function wireClients(){
+    document.getElementById('addBtn').addEventListener('click', () => openClientModal(null));
+    ['search','filtSursa','filtStatus'].forEach(id => document.getElementById(id).addEventListener('input', renderClientsTable));
+    document.getElementById('filtSursa').addEventListener('change', renderClientsTable);
+    document.getElementById('filtStatus').addEventListener('change', renderClientsTable);
+    renderClientsTable();
+  }
+
+  function renderClientsTable(){
+    const q = (document.getElementById('search').value||'').trim().toLowerCase();
+    const fs = document.getElementById('filtSursa').value;
+    const fst = document.getElementById('filtStatus').value;
+    const filtered = clients.filter(c => {
+      if(q && !c.nume.toLowerCase().includes(q) && !(c.telefon||'').includes(q)) return false;
+      if(fs && c.sursa!==fs) return false;
+      if(fst==='da' && !c.contactat) return false;
+      if(fst==='nu' && c.contactat) return false;
+      return true;
+    }).sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
+    document.getElementById('empty').style.display = clients.length ? 'none':'block';
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+    filtered.forEach(c => tbody.appendChild(clientRowEl(c)));
+  }
+
+  function clientRowEl(c){
+    const tr = document.createElement('tr');
+    tr.className = 'rowhover';
+    const badge = c.contactat
+      ? '<span class="pill" style="background:var(--accent-bg);color:var(--accent-dark);">contactat</span>'
+      : '<span class="pill" style="background:var(--warm-bg);color:var(--warm-text);">de contactat</span>';
+    tr.innerHTML =
+      '<td style="padding-left:24px;font-weight:500;">'+esc(c.nume)+'</td>' +
+      '<td class="mono">'+esc(c.telefon||'')+'</td>' +
+      '<td>'+esc(c.email||'')+'</td>' +
+      '<td>'+esc(c.sursa||'')+'</td>' +
+      '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nevoie||'')+'</td>' +
+      '<td>'+badge+'</td>' +
+      '<td style="padding-right:24px;color:var(--text3);">'+fmtDate(c.addedAt)+'</td>';
+    tr.addEventListener('click', () => openClientModal(c.id));
+    return tr;
+  }
+
+  /* ---------- OFERTE (DEALS) ---------- */
+  function dealsHtml(){
+    return (
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:22px;flex-wrap:wrap;gap:14px;">' +
+        '<div><div class="pagetitle">Oferte</div><div class="pagesub">'+deals.length+' oferte totale · '+fmtRon(activeDealsValue())+' active</div></div>' +
+        '<button id="addDealBtn" class="btn-primary">+ ofertă nouă</button>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;">' + STAGES.map(stageColumnHtml).join('') + '</div>'
+    );
+  }
+
+  function stageColumnHtml(s){
+    return '<div>' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">' +
+        '<span class="pill" style="background:'+s.bg+';color:'+s.color+';">'+s.label+'</span>' +
+      '</div>' +
+      '<div id="col_'+s.key+'" style="display:flex;flex-direction:column;gap:12px;min-height:70px;"></div>' +
+      '<div id="tot_'+s.key+'" style="font-size:12px;color:var(--text3);margin-top:10px;"></div>' +
+    '</div>';
+  }
+
+  function wireDeals(){
+    document.getElementById('addDealBtn').addEventListener('click', () => openDealModal(null));
+    STAGES.forEach(s => {
+      const col = document.getElementById('col_'+s.key);
+      const items = deals.filter(d=>d.etapa===s.key).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
+      items.forEach(d => col.appendChild(dealCardEl(d, s)));
+      const total = items.reduce((sum,d)=>sum+(Number(d.valoare)||0),0);
+      document.getElementById('tot_'+s.key).textContent = fmtRon(total) + ' · ' + items.length;
+    });
+  }
+
+  function dealCardEl(d, stageDef){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText += 'padding:15px 16px;border-left:3px solid '+stageDef.color+';cursor:pointer;';
+    card.innerHTML =
+      '<div style="font-size:13.5px;font-weight:500;">'+esc(d.titlu||d.clientNume)+'</div>' +
+      '<div style="font-size:12.5px;color:var(--text2);margin-top:3px;">'+esc(d.clientNume)+'</div>' +
+      '<div class="mono" style="font-size:13px;color:var(--accent-dark);margin-top:8px;">'+fmtRon(d.valoare)+'</div>' +
+      '<div style="font-size:11.5px;color:var(--text3);margin-top:6px;">creat '+fmtDate(d.createdAt)+'</div>';
+    card.addEventListener('click', () => openDealModal(d.id));
+    return card;
+  }
+
+  /* ---------- SARCINI (TASKS) ---------- */
+  function getTasks(){
+    const tasks = [];
+    clients.filter(c=>!c.contactat).forEach(c => {
+      tasks.push({id:'ct_'+c.id, type:'client', refId:c.id, label:'Sună pe '+c.nume, sub: c.telefon||'', ts:c.addedAt});
+    });
+    deals.filter(d=>d.followUp).forEach(d => {
+      tasks.push({id:'dl_'+d.id, type:'deal', refId:d.id, label:'Follow-up ofertă — '+d.clientNume, sub: fmtDate(d.followUp), ts:d.followUp});
+    });
+    return tasks.sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
+  }
+
+  function tasksHtml(){
+    const tasks = getTasks();
+    return (
+      '<div style="margin-bottom:22px;"><div class="pagetitle">Sarcini</div><div class="pagesub">'+tasks.length+' de rezolvat</div></div>' +
+      '<div class="card" style="padding:0;overflow:hidden;">' +
+        '<div id="taskList" style="display:flex;flex-direction:column;"></div>' +
+        (tasks.length===0 ? '<div style="text-align:center;padding:50px 20px;color:var(--text3);font-size:13px;">nicio sarcină restantă</div>' : '') +
+      '</div>'
+    );
+  }
+
+  function wireTasks(){
+    const list = document.getElementById('taskList');
+    getTasks().forEach(t => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:14px;padding:17px 22px;border-bottom:1px solid var(--line);cursor:pointer;';
+      row.innerHTML =
+        '<i class="ti ti-clock" style="font-size:16px;color:var(--warm-text);flex-shrink:0;" aria-hidden="true"></i>' +
+        '<div style="flex:1;"><div style="font-size:13.5px;">'+esc(t.label)+'</div><div style="font-size:12px;color:var(--text3);margin-top:2px;">'+esc(t.sub)+'</div></div>' +
+        '<button class="btn" data-done="1">rezolvat</button>';
+      row.querySelector('button').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if(t.type==='client'){
+          await updateDoc(doc(db,'clients',t.refId), { contactat:true, updatedAt:new Date().toISOString() });
+          const c = clients.find(x=>x.id===t.refId);
+          logActivity('Marcat ca și contactat: '+(c?c.nume:''));
+        } else {
+          await updateDoc(doc(db,'deals',t.refId), { followUp:'', updatedAt:new Date().toISOString() });
+          const d = deals.find(x=>x.id===t.refId);
+          logActivity('Follow-up rezolvat pentru '+(d?d.clientNume:''));
+        }
+      });
+      row.addEventListener('click', () => { if(t.type==='client') openClientModal(t.refId); else openDealModal(t.refId); });
+      list.appendChild(row);
+    });
+  }
+
+  /* ---------- ACTIVITATE ---------- */
+  function activityHtml(){
+    const items = activity.slice().sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
+    return (
+      '<div style="margin-bottom:22px;"><div class="pagetitle">Activitate</div><div class="pagesub">jurnal de acțiuni</div></div>' +
+      '<div class="card" style="padding:0;overflow:hidden;">' +
+        '<div style="display:flex;flex-direction:column;">' +
+          items.map(a => '<div style="padding:17px 22px;border-bottom:1px solid var(--line);font-size:13.5px;">'+esc(a.text)+'<div style="font-size:12px;color:var(--text3);margin-top:3px;">'+fmtDateTime(a.ts)+'</div></div>').join('') +
+        '</div>' +
+        (items.length===0 ? '<div style="text-align:center;padding:50px 20px;color:var(--text3);font-size:13px;">nicio activitate încă</div>' : '') +
+      '</div>'
+    );
+  }
+
+  /* ---------- SHARED FORM HELPERS ---------- */
+  function field(label, id, val, type){
+    return '<div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">'+label+'</div>' +
+      '<input id="'+id+'" type="'+(type||'text')+'" value="'+esc(val||'')+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;"></div>';
+  }
+  function textareaField(label, id, val){
+    return '<div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">'+label+'</div>' +
+      '<textarea id="'+id+'" rows="2" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;resize:vertical;font-family:inherit;">'+esc(val||'')+'</textarea></div>';
+  }
+  function selectField(label, id, options, selected, withEmpty){
+    const opts = options.map(o => '<option value="'+o+'"'+(o===selected?' selected':'')+'>'+o+'</option>').join('');
+    return '<div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">'+label+'</div>' +
+      '<select id="'+id+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;">' +
+      (withEmpty?'<option value="">–</option>':'') + opts + '</select></div>';
+  }
+
+  /* ---------- CLIENT MODAL ---------- */
+  function openClientModal(id){
+    editingClientId = id || null;
+    const c = id ? clients.find(x=>x.id===id) : null;
+    const m = document.getElementById('modal');
+    m.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+        '<div style="font-size:15px;font-weight:500;">'+(c?'Editează client':'Client nou')+'</div>' +
+        '<button id="closeModal" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">&times;</button>' +
+      '</div>' +
+      field('Nume','f_nume', c?c.nume:'') +
+      field('Telefon','f_telefon', c?c.telefon:'') +
+      field('Email','f_email', c?c.email:'') +
+      selectField('Sursă','f_sursa', SURSE, c?c.sursa:'', true) +
+      textareaField('Nevoia clientului','f_nevoie', c?c.nevoie:'') +
+      textareaField('Rezultatul discuției la telefon','f_rezultat', c?c.rezultat:'') +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:4px 0;">' +
+        '<input id="f_contactat" type="checkbox" '+(c&&c.contactat?'checked':'')+' style="width:16px;height:16px;accent-color:var(--accent);">' +
+        '<label for="f_contactat" style="font-size:13px;color:var(--text2);cursor:pointer;">am luat legătura cu acest client</label></div>' +
+      (c?'<div style="font-size:11px;color:var(--text3);margin-top:6px;">adăugat pe '+fmtDate(c.addedAt)+'</div>':'') +
+      '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:10px;"></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">' +
+        (c?'<button id="deleteBtn" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;">șterge client</button>':'<span></span>') +
+        '<div style="display:flex;gap:8px;"><button id="cancelBtn" class="btn">anulează</button><button id="saveBtn" class="btn-primary">salvează</button></div>' +
+      '</div>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('cancelBtn').onclick = closeModal;
+    document.getElementById('saveBtn').onclick = saveClient;
+    if(c) document.getElementById('deleteBtn').onclick = () => deleteClient(c.id);
+  }
+
+  async function saveClient(){
+    const nume = document.getElementById('f_nume').value.trim();
+    const telefon = document.getElementById('f_telefon').value.trim();
+    const errEl = document.getElementById('formError');
+    if(!nume || !telefon){ errEl.textContent='completează numele și telefonul'; errEl.style.display='block'; return; }
+    errEl.style.display='none';
+    const data = {
+      nume, telefon,
+      email: document.getElementById('f_email').value.trim(),
+      sursa: document.getElementById('f_sursa').value,
+      nevoie: document.getElementById('f_nevoie').value.trim(),
+      rezultat: document.getElementById('f_rezultat').value.trim(),
+      contactat: document.getElementById('f_contactat').checked,
+      updatedAt: new Date().toISOString()
+    };
+    if(editingClientId){
+      await updateDoc(doc(db,'clients',editingClientId), data);
+      logActivity('Client actualizat: '+nume);
+    } else {
+      data.addedAt = new Date().toISOString();
+      await addDoc(clientsCol, data);
+      logActivity('Client nou adăugat: '+nume);
+    }
+    closeModal();
+  }
+
+  async function deleteClient(id){
+    const c = clients.find(x=>x.id===id);
+    await deleteDoc(doc(db,'clients',id));
+    if(c) logActivity('Client șters: '+c.nume);
+    closeModal();
+  }
+
+  /* ---------- DEAL MODAL ---------- */
+  function openDealModal(id){
+    editingDealId = id || null;
+    const d = id ? deals.find(x=>x.id===id) : null;
+    const m = document.getElementById('modal');
+    const clientOptions = clients.map(c=>c.nume);
+    m.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+        '<div style="font-size:15px;font-weight:500;">'+(d?'Editează ofertă':'Ofertă nouă')+'</div>' +
+        '<button id="closeModal" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">&times;</button>' +
+      '</div>' +
+      (clients.length ? selectField('Client','f_client', clientOptions, d?d.clientNume:'', true) : '<div style="font-size:12px;color:var(--warm-text);margin-bottom:10px;">adaugă întâi un client la Clienți</div>') +
+      field('Titlu ofertă (opțional)','f_titlu', d?d.titlu:'') +
+      field('Valoare (RON)','f_valoare', d?d.valoare:'', 'number') +
+      selectField('Etapă','f_etapa', STAGES.map(s=>s.label), d?STAGES.find(s=>s.key===d.etapa).label:STAGES[0].label) +
+      field('Follow-up (opțional)','f_followup', d?d.followUp:'', 'date') +
+      '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:6px;"></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">' +
+        (d?'<button id="deleteBtn" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;">șterge ofertă</button>':'<span></span>') +
+        '<div style="display:flex;gap:8px;"><button id="cancelBtn" class="btn">anulează</button><button id="saveBtn" class="btn-primary">salvează</button></div>' +
+      '</div>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('cancelBtn').onclick = closeModal;
+    document.getElementById('saveBtn').onclick = saveDeal;
+    if(d) document.getElementById('deleteBtn').onclick = () => deleteDeal(d.id);
+  }
+
+  async function saveDeal(){
+    const errEl = document.getElementById('formError');
+    const clientSel = document.getElementById('f_client');
+    const clientNume = clientSel ? clientSel.value : '';
+    if(!clientNume){ errEl.textContent='selectează un client'; errEl.style.display='block'; return; }
+    errEl.style.display='none';
+    const stageLabel = document.getElementById('f_etapa').value;
+    const stageObj = STAGES.find(s=>s.label===stageLabel) || STAGES[0];
+    const data = {
+      clientNume,
+      titlu: document.getElementById('f_titlu').value.trim(),
+      valoare: parseFloat(document.getElementById('f_valoare').value) || 0,
+      etapa: stageObj.key,
+      followUp: document.getElementById('f_followup').value,
+      updatedAt: new Date().toISOString()
+    };
+    if(editingDealId){
+      await updateDoc(doc(db,'deals',editingDealId), data);
+      logActivity('Ofertă actualizată — '+clientNume+' → '+stageObj.label);
+    } else {
+      data.createdAt = new Date().toISOString();
+      await addDoc(dealsCol, data);
+      logActivity('Ofertă nouă creată pentru '+clientNume);
+    }
+    closeModal();
+  }
+
+  async function deleteDeal(id){
+    const d = deals.find(x=>x.id===id);
+    await deleteDoc(doc(db,'deals',id));
+    if(d) logActivity('Ofertă ștearsă — '+d.clientNume);
+    closeModal();
+  }
+
+  function closeModal(){
+    document.getElementById('modalWrap').style.display = 'none';
+    editingClientId = null; editingDealId = null;
+  }
+
+  document.getElementById('topSearch').addEventListener('keydown', (e) => {
+    if(e.key==='Enter'){
+      currentView='clienti'; renderNav(); renderPage();
+      const s = document.getElementById('search');
+      if(s){ s.value = document.getElementById('topSearch').value; renderClientsTable(); }
+    }
+  });
+
+  window.addEventListener('beforeunload', destroyCharts);
+})();
+</script>
+</body>
+</html>
