@@ -131,6 +131,8 @@ const activityCol = collection(db, 'activity');
   let editingClientId = null, editingDealId = null;
   let dashRange = 'month';
   let charts = {};
+  let resizingKey = null;
+  let dashResizeObserver = null;
 
   function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function fmtDate(iso){ if(!iso) return ''; const d=new Date(iso); return d.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'}); }
@@ -192,6 +194,18 @@ const activityCol = collection(db, 'activity');
   }, err => console.error(err));
 
   renderNav();
+
+  document.addEventListener('mousedown', (e) => {
+    const card = e.target.closest('.dashcard');
+    if(!card) return;
+    const rect = card.getBoundingClientRect();
+    if((rect.right - e.clientX) < 24 && (rect.bottom - e.clientY) < 24){
+      resizingKey = card.dataset.key;
+    }
+  });
+  document.addEventListener('mouseup', () => {
+    setTimeout(() => { resizingKey = null; }, 80);
+  });
 
   function renderNav(){
     const nav = document.getElementById('nav');
@@ -420,20 +434,25 @@ const activityCol = collection(db, 'activity');
   function wireDashCardResize(){
     const container = document.getElementById('dashCards');
     if(!container || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(entries => {
+    if(dashResizeObserver) dashResizeObserver.disconnect();
+    dashResizeObserver = new ResizeObserver(entries => {
+      let changed = false;
       entries.forEach(entry => {
         const card = entry.target;
         const key = card.dataset.key;
         if(!key) return;
         const w = Math.round(entry.contentRect.width);
         const h = Math.round(entry.contentRect.height);
-        dashLayout.sizes[key] = { w, h };
+        if(key === resizingKey){
+          dashLayout.sizes[key] = { w, h };
+          changed = true;
+        }
         const chartKey = CARD_CHART_MAP[key];
         if(chartKey && charts[chartKey]) charts[chartKey].resize();
       });
-      saveDashLayout();
+      if(changed) saveDashLayout();
     });
-    container.querySelectorAll('.dashcard').forEach(card => ro.observe(card));
+    container.querySelectorAll('.dashcard').forEach(card => dashResizeObserver.observe(card));
   }
 
   function wireDashboard(){
