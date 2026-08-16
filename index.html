@@ -10,7 +10,7 @@
 <link rel="icon" href="icon-192.png" type="image/png">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Oswald:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   :root{
     --sidebar:#15171a; --sidebar-hover:#232629; --sidebar-active:#0f3129;
@@ -219,7 +219,7 @@ const activityCol = collection(db, 'activity');
     return '<div style="background:#fff;border:1px solid var(--line-strong);border-radius:10px;padding:20px 22px;'+(extraStyle||'')+'">'+inner+'</div>';
   }
   function cardTitle(text){
-    return '<div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:500;color:#0d5c56;margin-bottom:10px;">'+text+'<i class="ti ti-info-circle" style="font-size:14px;color:var(--text3);" aria-hidden="true"></i></div>';
+    return '<div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:500;color:#0d5c56;margin-bottom:10px;padding-right:44px;">'+text+'<i class="ti ti-info-circle" style="font-size:14px;color:var(--text3);" aria-hidden="true"></i></div>';
   }
   function minipill(text){
     return '<span style="background:#f2f1ea;color:var(--text2);font-size:11.5px;font-weight:500;padding:4px 10px;border-radius:6px;">'+text+'</span>';
@@ -230,8 +230,76 @@ const activityCol = collection(db, 'activity');
       msg + '</div>';
   }
 
-  function dashboardHtml(){
+  const DASH_ORDER_KEY = 'beze_dash_layout';
+  const DEFAULT_DASH_ORDER = ['clientiNoi','clientiTimp','surse','oferteTimp','oferteEtapa','sarcini','activitate'];
+  const DASH_TITLES = {
+    clientiNoi:'Clienți noi', clientiTimp:'Clienți adăugați în timp',
+    surse:'Sursa clienților', oferteTimp:'Oferte create în timp',
+    oferteEtapa:'Oferte după etapă', sarcini:'Sarcini restante', activitate:'Activitate recentă'
+  };
+
+  function loadDashLayout(){
+    try{
+      const raw = localStorage.getItem(DASH_ORDER_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        const order = (parsed.order||[]).filter(k => DASH_TITLES[k]);
+        DEFAULT_DASH_ORDER.forEach(k => { if(!order.includes(k)) order.push(k); });
+        return { order, hidden: Array.isArray(parsed.hidden) ? parsed.hidden.filter(k=>DASH_TITLES[k]) : [] };
+      }
+    }catch(e){}
+    return { order: DEFAULT_DASH_ORDER.slice(), hidden: [] };
+  }
+  let dashLayout = loadDashLayout();
+  function saveDashLayout(){ try{ localStorage.setItem(DASH_ORDER_KEY, JSON.stringify(dashLayout)); }catch(e){} }
+
+  function dashCardInner(key){
     const noDeals = deals.length === 0;
+    if(key==='clientiNoi') return cardTitle('Clienți noi') +
+      '<div style="display:flex;gap:6px;margin-bottom:18px;">' + minipill('Luna aceasta') + minipill('Comparat cu | Luna trecută') + '</div>' +
+      '<div style="text-align:center;padding:10px 0 4px;max-width:260px;margin:0 auto;">' +
+        '<div style="font-size:11px;color:var(--text3);letter-spacing:0.05em;">(NUMĂR) CLIENȚI</div>' +
+        '<div style="font-size:40px;font-weight:600;color:#0d5c56;margin-top:6px;">' + newContactsThisMonth() + '</div>' +
+      '</div>';
+    if(key==='clientiTimp') return cardTitle('Clienți adăugați în timp (cumulat)') +
+      minipill('Total lunar') +
+      '<div style="height:220px;margin-top:14px;"><canvas id="chartOverTime"></canvas></div>';
+    if(key==='surse') return cardTitle('Sursa clienților') +
+      minipill('Luna aceasta') +
+      '<div style="display:flex;align-items:center;gap:6px;margin:14px 0 6px;font-size:12px;color:var(--text2);"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;"></span>(Număr) Clienți</div>' +
+      '<div style="height:220px;"><canvas id="chartSources"></canvas></div>';
+    if(key==='oferteTimp') return cardTitle('Oferte create în timp') +
+      minipill('Luna aceasta · lunar') +
+      (noDeals ? emptyState('Fără date momentan. După ce adaugi oferte, le vei vedea aici.')
+               : '<div style="height:190px;margin-top:14px;"><canvas id="chartDealsTime"></canvas></div>');
+    if(key==='oferteEtapa') return cardTitle('Oferte după etapă') +
+      minipill('Luna aceasta') +
+      (noDeals ? emptyState('Fără date momentan. După ce adaugi oferte, le vei vedea aici.')
+               : '<div style="display:flex;gap:20px;align-items:center;margin-top:14px;">' +
+                   '<div style="width:140px;height:140px;flex-shrink:0;"><canvas id="chartDealStage"></canvas></div>' +
+                   '<div style="font-size:12px;">' + dealStageLegend() +
+                     '<div style="margin-top:10px;color:var(--text3);">valoare câștigată</div><div style="font-size:16px;font-weight:500;color:var(--accent-dark);">' + fmtRon(wonDealsValue()) + '</div>' +
+                     '<div style="margin-top:8px;color:var(--text3);">valoare activă (în lucru)</div><div style="font-size:16px;font-weight:500;color:var(--text);">' + fmtRon(activeDealsValue()) + '</div>' +
+                   '</div>' +
+                 '</div>');
+    if(key==='sarcini') return cardTitle('Sarcini restante') + '<div id="miniTasks" style="display:flex;flex-direction:column;gap:8px;"></div>';
+    if(key==='activitate') return cardTitle('Activitate recentă') + '<div id="miniActivity" style="display:flex;flex-direction:column;gap:8px;"></div>';
+    return '';
+  }
+
+  function dashCardWrapper(key){
+    return '<div class="dashcard" draggable="true" data-key="'+key+'" style="position:relative;transition:opacity 0.15s;">' +
+      '<div style="position:absolute;top:18px;right:20px;display:flex;gap:10px;z-index:2;">' +
+        '<i class="ti ti-grip-vertical" style="cursor:grab;color:var(--line-strong);font-size:16px;" title="trage pentru a reordona" aria-hidden="true"></i>' +
+        '<i class="ti ti-x" data-hide="'+key+'" style="cursor:pointer;color:var(--text3);font-size:16px;" title="ascunde acest card" aria-hidden="true"></i>' +
+      '</div>' +
+      hcard(dashCardInner(key)) +
+    '</div>';
+  }
+
+  function dashboardHtml(){
+    const visible = dashLayout.order.filter(k => !dashLayout.hidden.includes(k));
+    const hidden = dashLayout.order.filter(k => dashLayout.hidden.includes(k));
     return (
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">' +
         '<div style="display:flex;align-items:center;gap:9px;">' +
@@ -248,58 +316,21 @@ const activityCol = collection(db, 'activity');
           '<option value="30d"' + (dashRange==='30d'?' selected':'') + '>Ultimele 30 zile</option>' +
           '<option value="all"' + (dashRange==='all'?' selected':'') + '>Tot timpul</option>' +
         '</select>' +
+        '<span style="font-size:11.5px;color:var(--text3);display:flex;align-items:center;gap:5px;"><i class="ti ti-arrows-move" aria-hidden="true"></i>trage cardurile ca să le rearanjezi</span>' +
+        '<button id="resetLayoutBtn" class="btn" style="font-size:11.5px;padding:5px 10px;">resetează aspectul</button>' +
         '<i class="ti ti-refresh" id="refreshBtn" style="margin-left:auto;font-size:16px;color:var(--text3);cursor:pointer;" aria-hidden="true" title="Reîmprospătează"></i>' +
       '</div>' +
 
-      '<div style="display:grid;grid-template-columns:1fr 1.3fr;gap:16px;margin-bottom:16px;align-items:stretch;">' +
-        '<div style="display:flex;flex-direction:column;gap:16px;">' +
-          hcard(
-            cardTitle('Clienți noi') +
-            '<div style="display:flex;gap:6px;margin-bottom:18px;">' + minipill('Luna aceasta') + minipill('Comparat cu | Luna trecută') + '</div>' +
-            '<div style="text-align:center;padding:10px 0 4px;">' +
-              '<div style="font-size:11px;color:var(--text3);letter-spacing:0.05em;">(NUMĂR) CLIENȚI</div>' +
-              '<div style="font-size:40px;font-weight:600;color:#0d5c56;margin-top:6px;">' + newContactsThisMonth() + '</div>' +
-            '</div>'
-          ) +
-          hcard(
-            cardTitle('Clienți adăugați în timp (cumulat)') +
-            minipill('Total lunar') +
-            '<div style="height:150px;margin-top:14px;"><canvas id="chartOverTime"></canvas></div>'
-          ) +
-        '</div>' +
-        hcard(
-          cardTitle('Sursa clienților') +
-          minipill('Luna aceasta') +
-          '<div style="display:flex;align-items:center;gap:6px;margin:14px 0 6px;font-size:12px;color:var(--text2);"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;"></span>(Număr) Clienți</div>' +
-          '<div style="height:290px;"><canvas id="chartSources"></canvas></div>',
-          'display:flex;flex-direction:column;'
-        ) +
+      '<div id="dashCards" style="display:flex;flex-direction:column;gap:16px;">' +
+        visible.map(dashCardWrapper).join('') +
       '</div>' +
 
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">' +
-        hcard(
-          cardTitle('Oferte create în timp') +
-          minipill('Luna aceasta · lunar') +
-          (noDeals
-            ? emptyState('Fără date momentan. După ce adaugi oferte, le vei vedea aici.')
-            : '<div style="height:190px;margin-top:14px;"><canvas id="chartDealsTime"></canvas></div>')
-        ) +
-        hcard(
-          cardTitle('Oferte după etapă') +
-          minipill('Luna aceasta') +
-          (noDeals
-            ? emptyState('Fără date momentan. După ce adaugi oferte, le vei vedea aici.')
-            : '<div style="display:flex;gap:20px;align-items:center;margin-top:14px;">' +
-                '<div style="width:140px;height:140px;flex-shrink:0;"><canvas id="chartDealStage"></canvas></div>' +
-                '<div style="font-size:12px;">' + dealStageLegend() + '<div style="margin-top:10px;color:var(--text3);">valoare activă</div><div style="font-size:17px;font-weight:500;color:var(--text);">' + fmtRon(activeDealsValue()) + '</div></div>' +
-              '</div>')
-        ) +
-      '</div>' +
-
-      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;">' +
-        hcard(cardTitle('Sarcini restante') + '<div id="miniTasks" style="display:flex;flex-direction:column;gap:8px;"></div>') +
-        hcard(cardTitle('Activitate recentă') + '<div id="miniActivity" style="display:flex;flex-direction:column;gap:8px;"></div>') +
-      '</div>'
+      (hidden.length
+        ? '<div style="margin-top:18px;font-size:12px;color:var(--text3);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+            '<span>carduri ascunse:</span>' +
+            hidden.map(k => '<button class="btn" data-show="'+k+'" style="font-size:11px;padding:5px 10px;">+ '+DASH_TITLES[k]+'</button>').join('') +
+          '</div>'
+        : '')
     );
   }
 
@@ -307,6 +338,9 @@ const activityCol = collection(db, 'activity');
 
   function activeDealsValue(){
     return deals.filter(d => d.etapa!=='client' && d.etapa!=='pierdut').reduce((s,d)=>s+(Number(d.valoare)||0),0);
+  }
+  function wonDealsValue(){
+    return deals.filter(d => d.etapa==='client').reduce((s,d)=>s+(Number(d.valoare)||0),0);
   }
 
   function sourceCounts(){
@@ -324,77 +358,138 @@ const activityCol = collection(db, 'activity');
     }).join('');
   }
 
+  function wireDashCardDrag(){
+    const container = document.getElementById('dashCards');
+    if(!container) return;
+    let draggedKey = null;
+    container.querySelectorAll('.dashcard').forEach(card => {
+      card.addEventListener('dragstart', () => { draggedKey = card.dataset.key; card.style.opacity = '0.4'; });
+      card.addEventListener('dragend', () => { card.style.opacity = '1'; });
+      card.addEventListener('dragover', (e) => { e.preventDefault(); card.style.borderTop = '2px solid var(--accent)'; });
+      card.addEventListener('dragleave', () => { card.style.borderTop = ''; });
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.style.borderTop = '';
+        const targetKey = card.dataset.key;
+        if(!draggedKey || draggedKey===targetKey) return;
+        const order = dashLayout.order.filter(k => k!==draggedKey);
+        const idx = order.indexOf(targetKey);
+        order.splice(idx, 0, draggedKey);
+        dashLayout.order = order;
+        saveDashLayout();
+        renderPage();
+      });
+      const hideBtn = card.querySelector('[data-hide]');
+      if(hideBtn) hideBtn.addEventListener('click', () => {
+        dashLayout.hidden = Array.from(new Set([...dashLayout.hidden, hideBtn.dataset.hide]));
+        saveDashLayout();
+        renderPage();
+      });
+    });
+    document.querySelectorAll('[data-show]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        dashLayout.hidden = dashLayout.hidden.filter(k => k!==btn.dataset.show);
+        saveDashLayout();
+        renderPage();
+      });
+    });
+    const resetBtn = document.getElementById('resetLayoutBtn');
+    if(resetBtn) resetBtn.addEventListener('click', () => {
+      dashLayout = { order: DEFAULT_DASH_ORDER.slice(), hidden: [] };
+      saveDashLayout();
+      renderPage();
+    });
+  }
+
   function wireDashboard(){
     document.getElementById('dashAddBtn').addEventListener('click', () => openClientModal(null));
     document.getElementById('rangeSel').addEventListener('change', e => { dashRange = e.target.value; renderPage(); });
     document.getElementById('refreshBtn').addEventListener('click', () => renderPage());
+    wireDashCardDrag();
 
     const dashedGrid = { color:'#eceae1', borderDash:[3,3] };
 
-    const now = new Date();
-    const year = now.getFullYear();
-    let running = clients.filter(c => new Date(c.addedAt).getFullYear() < year).length;
-    const cumLabels = [], cumData = [];
-    for(let m=0; m<=now.getMonth(); m++){
-      const countThisMonth = clients.filter(c => { const d=new Date(c.addedAt); return d.getFullYear()===year && d.getMonth()===m; }).length;
-      running += countThisMonth;
-      cumLabels.push(monthLabel(year+'-'+String(m+1).padStart(2,'0')));
-      cumData.push(running);
-    }
-    charts.overTime = new Chart(document.getElementById('chartOverTime'), {
-      type:'line',
-      data:{ labels: cumLabels, datasets:[{ data: cumData, borderColor:'#1f8f72', backgroundColor:'rgba(31,143,114,0.1)', fill:true, tension:0.2, pointRadius:3, pointBackgroundColor:'#1f8f72' }] },
-      options:{ plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, ticks:{precision:0, font:{size:11}}, grid:dashedGrid }, x:{ grid:{display:false}, ticks:{font:{size:11}} } }, responsive:true, maintainAspectRatio:false }
-    });
+    try{
+      if(typeof Chart === 'undefined') throw new Error('Chart.js nu s-a încărcat');
 
-    const bySrc = sourceCounts();
-    const sk = Object.keys(bySrc);
-    charts.sources = new Chart(document.getElementById('chartSources'), {
-      type:'bar',
-      data:{ labels: sk, datasets:[{ label:'Clienți', data: sk.map(k=>bySrc[k]), backgroundColor:'#1f8f72', borderRadius:0, maxBarThickness:60 }] },
-      options:{ plugins:{legend:{display:false}}, scales:{
-        y:{ beginAtZero:true, ticks:{precision:0, font:{size:11}}, grid:dashedGrid, title:{display:true, text:'(Număr) Clienți', font:{size:11}} },
-        x:{ grid:{display:false}, ticks:{font:{size:11}}, title:{display:true, text:'Sursă', font:{size:11}} }
-      }, responsive:true, maintainAspectRatio:false }
-    });
+      if(document.getElementById('chartOverTime')){
+        const now = new Date();
+        const year = now.getFullYear();
+        let running = clients.filter(c => new Date(c.addedAt).getFullYear() < year).length;
+        const cumLabels = [], cumData = [];
+        for(let m=0; m<=now.getMonth(); m++){
+          const countThisMonth = clients.filter(c => { const d=new Date(c.addedAt); return d.getFullYear()===year && d.getMonth()===m; }).length;
+          running += countThisMonth;
+          cumLabels.push(monthLabel(year+'-'+String(m+1).padStart(2,'0')));
+          cumData.push(running);
+        }
+        charts.overTime = new Chart(document.getElementById('chartOverTime'), {
+          type:'line',
+          data:{ labels: cumLabels, datasets:[{ data: cumData, borderColor:'#1f8f72', backgroundColor:'rgba(31,143,114,0.1)', fill:true, tension:0.2, pointRadius:3, pointBackgroundColor:'#1f8f72' }] },
+          options:{ plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, ticks:{precision:0, font:{size:11}}, grid:dashedGrid }, x:{ grid:{display:false}, ticks:{font:{size:11}} } }, responsive:true, maintainAspectRatio:false }
+        });
+      }
 
-    if(deals.length){
-      const byDealMonth = {};
-      deals.forEach(d => { const k=monthKey(d.createdAt); byDealMonth[k]=(byDealMonth[k]||0)+1; });
-      const dmk = Object.keys(byDealMonth).sort();
-      charts.dealsTime = new Chart(document.getElementById('chartDealsTime'), {
-        type:'line',
-        data:{ labels: dmk.map(monthLabel), datasets:[{ data: dmk.map(k=>byDealMonth[k]), borderColor:'#3576c9', backgroundColor:'rgba(53,118,201,0.1)', fill:true, tension:0.2, pointRadius:3 }] },
-        options:{ plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true,ticks:{precision:0,font:{size:11}}, grid:dashedGrid}, x:{grid:{display:false}, ticks:{font:{size:11}}} }, responsive:true, maintainAspectRatio:false }
-      });
+      if(document.getElementById('chartSources')){
+        const bySrc = sourceCounts();
+        const sk = Object.keys(bySrc);
+        charts.sources = new Chart(document.getElementById('chartSources'), {
+          type:'bar',
+          data:{ labels: sk, datasets:[{ label:'Clienți', data: sk.map(k=>bySrc[k]), backgroundColor:'#1f8f72', borderRadius:0, maxBarThickness:60 }] },
+          options:{ plugins:{legend:{display:false}}, scales:{
+            y:{ beginAtZero:true, ticks:{precision:0, font:{size:11}}, grid:dashedGrid, title:{display:true, text:'(Număr) Clienți', font:{size:11}} },
+            x:{ grid:{display:false}, ticks:{font:{size:11}}, title:{display:true, text:'Sursă', font:{size:11}} }
+          }, responsive:true, maintainAspectRatio:false }
+        });
+      }
 
-      const stageCounts = STAGES.map(s => deals.filter(d=>d.etapa===s.key).length);
-      charts.dealStage = new Chart(document.getElementById('chartDealStage'), {
-        type:'doughnut',
-        data:{ labels: STAGES.map(s=>s.label), datasets:[{ data: stageCounts, backgroundColor: stageColors, borderWidth:0 }] },
-        options:{ plugins:{legend:{display:false}}, responsive:true, maintainAspectRatio:false, cutout:'65%' }
-      });
+      if(deals.length){
+        if(document.getElementById('chartDealsTime')){
+          const byDealMonth = {};
+          deals.forEach(d => { const k=monthKey(d.createdAt); byDealMonth[k]=(byDealMonth[k]||0)+1; });
+          const dmk = Object.keys(byDealMonth).sort();
+          charts.dealsTime = new Chart(document.getElementById('chartDealsTime'), {
+            type:'line',
+            data:{ labels: dmk.map(monthLabel), datasets:[{ data: dmk.map(k=>byDealMonth[k]), borderColor:'#3576c9', backgroundColor:'rgba(53,118,201,0.1)', fill:true, tension:0.2, pointRadius:3 }] },
+            options:{ plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true,ticks:{precision:0,font:{size:11}}, grid:dashedGrid}, x:{grid:{display:false}, ticks:{font:{size:11}}} }, responsive:true, maintainAspectRatio:false }
+          });
+        }
+        if(document.getElementById('chartDealStage')){
+          const stageCounts = STAGES.map(s => deals.filter(d=>d.etapa===s.key).length);
+          charts.dealStage = new Chart(document.getElementById('chartDealStage'), {
+            type:'doughnut',
+            data:{ labels: STAGES.map(s=>s.label), datasets:[{ data: stageCounts, backgroundColor: stageColors, borderWidth:0 }] },
+            options:{ plugins:{legend:{display:false}}, responsive:true, maintainAspectRatio:false, cutout:'65%' }
+          });
+        }
+      }
+    }catch(err){
+      console.error('Eroare la desenarea graficelor:', err);
     }
 
     const miniTasks = document.getElementById('miniTasks');
-    const pendingTasks = getTasks().slice(0,4);
-    if(pendingTasks.length===0){ miniTasks.innerHTML = '<div style="font-size:12px;color:var(--text3);">nimic restant</div>'; }
-    pendingTasks.forEach(t => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;justify-content:space-between;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);';
-      row.innerHTML = '<span>'+esc(t.label)+'</span><span style="color:var(--text3);">'+esc(t.sub)+'</span>';
-      miniTasks.appendChild(row);
-    });
+    if(miniTasks){
+      const pendingTasks = getTasks().slice(0,4);
+      if(pendingTasks.length===0){ miniTasks.innerHTML = '<div style="font-size:12px;color:var(--text3);">nimic restant</div>'; }
+      pendingTasks.forEach(t => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);';
+        row.innerHTML = '<span>'+esc(t.label)+'</span><span style="color:var(--text3);">'+esc(t.sub)+'</span>';
+        miniTasks.appendChild(row);
+      });
+    }
 
     const miniAct = document.getElementById('miniActivity');
-    const recentAct = activity.slice().sort((a,b)=>(b.ts||'').localeCompare(a.ts||'')).slice(0,4);
-    if(recentAct.length===0){ miniAct.innerHTML = '<div style="font-size:12px;color:var(--text3);">nicio activitate încă</div>'; }
-    recentAct.forEach(a => {
-      const row = document.createElement('div');
-      row.style.cssText = 'font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--text2);';
-      row.innerHTML = esc(a.text) + '<div style="font-size:11px;color:var(--text3);margin-top:1px;">'+fmtDateTime(a.ts)+'</div>';
-      miniAct.appendChild(row);
-    });
+    if(miniAct){
+      const recentAct = activity.slice().sort((a,b)=>(b.ts||'').localeCompare(a.ts||'')).slice(0,4);
+      if(recentAct.length===0){ miniAct.innerHTML = '<div style="font-size:12px;color:var(--text3);">nicio activitate încă</div>'; }
+      recentAct.forEach(a => {
+        const row = document.createElement('div');
+        row.style.cssText = 'font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--text2);';
+        row.innerHTML = esc(a.text) + '<div style="font-size:11px;color:var(--text3);margin-top:1px;">'+fmtDateTime(a.ts)+'</div>';
+        miniAct.appendChild(row);
+      });
+    }
   }
 
   function monthFilterOptions(){
