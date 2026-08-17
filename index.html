@@ -824,7 +824,7 @@ const activityCol = collection(db, 'activity');
         '<input id="search" type="text" placeholder="caută nume sau telefon..." style="background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 13px;border-radius:9px;font-size:13px;width:210px;outline:none;">' +
         '<select id="filtLuna" class="filt"><option value="">toate lunile</option>' + monthFilterOptions() + '</select>' +
         '<select id="filtSursa" class="filt"><option value="">toate sursele</option>' + SURSE.map(s=>'<option value="'+s+'">'+s+'</option>').join('') + '</select>' +
-        '<select id="filtStatus" class="filt"><option value="">toate statusurile</option><option value="da">contactat</option><option value="nu">de contactat</option></select>' +
+        '<select id="filtStatus" class="filt"><option value="">toate statusurile</option><option value="da">contactat</option><option value="nu">de contactat</option><option value="reapelare">cu reapelare programată</option><option value="nu_raspuns">nu a răspuns</option></select>' +
       '</div>' +
       '<div class="card" style="padding:0;overflow:hidden;">' +
         '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">' +
@@ -871,6 +871,8 @@ const activityCol = collection(db, 'activity');
       if(fs && c.sursa!==fs) return false;
       if(fst==='da' && !c.contactat) return false;
       if(fst==='nu' && c.contactat) return false;
+      if(fst==='reapelare' && !(c.nextCallAt || c.nextCallReason)) return false;
+      if(fst==='nu_raspuns' && c.nextCallReason!=='Nu a răspuns') return false;
       return true;
     }).sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
     document.getElementById('empty').style.display = clients.length ? 'none':'block';
@@ -885,8 +887,8 @@ const activityCol = collection(db, 'activity');
     const badge = c.contactat
       ? '<span class="pill" style="background:var(--accent-bg);color:var(--accent-dark);">contactat</span>'
       : '<span class="pill" style="background:var(--warm-bg);color:var(--warm-text);">de contactat</span>';
-    const recall = c.nextCallAt
-      ? '<div style="font-size:11px;color:var(--warm-text);margin-top:4px;"><i class="ti ti-phone-outgoing" aria-hidden="true"></i> reapelare '+fmtDateTime(c.nextCallAt)+'</div>'
+    const recall = (c.nextCallAt || c.nextCallReason)
+      ? '<div style="font-size:11px;color:var(--warm-text);margin-top:4px;"><i class="ti ti-phone-outgoing" aria-hidden="true"></i> '+esc(c.nextCallReason||'reapelare')+(c.nextCallAt?' · '+fmtDateTime(c.nextCallAt):'')+'</div>'
       : '';
     tr.innerHTML =
       '<td style="padding-left:24px;font-weight:500;">'+esc(c.nume)+'</td>' +
