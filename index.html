@@ -825,11 +825,11 @@ const activityCol = collection(db, 'activity');
         '<select id="filtLuna" class="filt"><option value="">toate lunile</option>' + monthFilterOptions() + '</select>' +
         '<select id="filtSursa" class="filt"><option value="">toate sursele</option>' + SURSE.map(s=>'<option value="'+s+'">'+s+'</option>').join('') + '</select>' +
         '<select id="filtStatus" class="filt"><option value="">toate statusurile</option><option value="da">contactat</option><option value="nu">de contactat</option><option value="reapelare">cu reapelare programată</option><option value="nu_raspuns">nu a răspuns</option></select>' +
-        '<select id="filtImportant" class="filt"><option value="">toți clienții</option><option value="da">doar importanți ⭐</option><option value="nu_interesat">neinteresați ✕</option></select>' +
+        '<select id="filtImportant" class="filt"><option value="">toți clienții</option><option value="da">doar importanți ⭐</option><option value="prioritate">importanți ⭐ + de reapelat 📞</option><option value="nu_interesat">neinteresați ✕</option></select>' +
       '</div>' +
       '<div class="card" style="padding:0;overflow:hidden;">' +
         '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">' +
-          '<thead><tr><th style="padding-left:20px;width:32px;"></th><th>Nume</th><th>Telefon</th><th>Email</th><th>Nevoie</th><th>Discuție tel.</th><th>Status</th><th>Adăugat</th><th style="padding-right:24px;">Sursă</th></tr></thead>' +
+          '<thead><tr><th style="padding-left:20px;width:32px;"></th><th>Nume</th><th>Telefon</th><th>Email</th><th>Nevoie</th><th>Discuție tel.</th><th>Status</th><th style="padding-right:24px;">Adăugat</th></tr></thead>' +
           '<tbody id="tbody"></tbody>' +
         '</table></div>' +
         '<div id="empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text3);"><div style="font-size:15px;">niciun client încă</div><div style="font-size:13px;margin-top:6px;">adaugă primul contact din formularele de reclame</div></div>' +
@@ -877,6 +877,7 @@ const activityCol = collection(db, 'activity');
       if(fst==='reapelare' && !(c.nextCallAt || c.nextCallReason)) return false;
       if(fst==='nu_raspuns' && c.nextCallReason!=='Nu a răspuns') return false;
       if(fimp==='da' && !c.important) return false;
+      if(fimp==='prioritate' && !(c.important || c.nextCallAt || c.nextCallReason)) return false;
       if(fimp==='nu_interesat' && !c.notInterested) return false;
       return true;
     }).sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
@@ -924,8 +925,7 @@ const activityCol = collection(db, 'activity');
       '<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nevoie||'')+'</td>' +
       '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);">'+esc(c.rezultat||'')+'</td>' +
       '<td>'+badge+recall+'</td>' +
-      '<td style="color:var(--text3);">'+fmtDate(c.addedAt)+'</td>' +
-      '<td style="padding-right:24px;color:var(--text3);">'+esc(c.sursa||'')+'</td>'
+      '<td style="padding-right:24px;color:var(--text3);">'+fmtDate(c.addedAt)+'</td>'
     );
     tr.addEventListener('click', () => openClientModal(c.id));
     return tr;
