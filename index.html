@@ -180,6 +180,13 @@ const activityCol = collection(db, 'activity');
     if(d.startsWith('40') && d.length>9) d = d.slice(2);
     return d.slice(0,9);
   }
+  function toDatetimeLocal(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return '';
+    const pad = n => String(n).padStart(2,'0');
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
 
   async function logActivity(text){
     try{ await addDoc(activityCol, { ts: new Date().toISOString(), text }); }catch(e){ console.error(e); }
@@ -878,13 +885,16 @@ const activityCol = collection(db, 'activity');
     const badge = c.contactat
       ? '<span class="pill" style="background:var(--accent-bg);color:var(--accent-dark);">contactat</span>'
       : '<span class="pill" style="background:var(--warm-bg);color:var(--warm-text);">de contactat</span>';
+    const recall = c.nextCallAt
+      ? '<div style="font-size:11px;color:var(--warm-text);margin-top:4px;"><i class="ti ti-phone-outgoing" aria-hidden="true"></i> reapelare '+fmtDateTime(c.nextCallAt)+'</div>'
+      : '';
     tr.innerHTML =
       '<td style="padding-left:24px;font-weight:500;">'+esc(c.nume)+'</td>' +
       '<td class="mono">'+esc(c.telefon||'')+'</td>' +
       '<td>'+esc(c.email||'')+'</td>' +
       '<td>'+esc(c.sursa||'')+'</td>' +
       '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nevoie||'')+'</td>' +
-      '<td>'+badge+'</td>' +
+      '<td>'+badge+recall+'</td>' +
       '<td style="padding-right:24px;color:var(--text3);">'+fmtDate(c.addedAt)+'</td>';
     tr.addEventListener('click', () => openClientModal(c.id));
     return tr;
@@ -938,8 +948,12 @@ const activityCol = collection(db, 'activity');
   /* ---------- SARCINI (TASKS) ---------- */
   function getTasks(){
     const tasks = [];
-    clients.filter(c=>!c.contactat).forEach(c => {
-      tasks.push({id:'ct_'+c.id, type:'client', refId:c.id, label:'Sună pe '+c.nume, sub: c.telefon||'', ts:c.addedAt});
+    clients.forEach(c => {
+      if(c.nextCallAt){
+        tasks.push({id:'ct_'+c.id, type:'client', mode:'recall', refId:c.id, label:(c.nextCallReason?c.nextCallReason+' — ':'')+'Sună din nou pe '+c.nume, sub: fmtDateTime(c.nextCallAt) + (c.telefon?' · '+c.telefon:''), ts:c.nextCallAt});
+      } else if(!c.contactat){
+        tasks.push({id:'ct_'+c.id, type:'client', mode:'contact', refId:c.id, label:'Sună pe '+c.nume, sub: c.telefon||'', ts:c.addedAt});
+      }
     });
     deals.filter(d=>d.followUp).forEach(d => {
       tasks.push({id:'dl_'+d.id, type:'deal', refId:d.id, label:'Follow-up ofertă — '+d.clientNume, sub: fmtDate(d.followUp), ts:d.followUp});
@@ -969,7 +983,11 @@ const activityCol = collection(db, 'activity');
         '<button class="btn" data-done="1">rezolvat</button>';
       row.querySelector('button').addEventListener('click', async (e) => {
         e.stopPropagation();
-        if(t.type==='client'){
+        if(t.type==='client' && t.mode==='recall'){
+          await updateDoc(doc(db,'clients',t.refId), { nextCallAt:'', nextCallReason:'', updatedAt:new Date().toISOString() });
+          const c = clients.find(x=>x.id===t.refId);
+          logActivity('Reapelare rezolvată: '+(c?c.nume:''));
+        } else if(t.type==='client'){
           await updateDoc(doc(db,'clients',t.refId), { contactat:true, updatedAt:new Date().toISOString() });
           const c = clients.find(x=>x.id===t.refId);
           logActivity('Marcat ca și contactat: '+(c?c.nume:''));
@@ -1048,6 +1066,12 @@ const activityCol = collection(db, 'activity');
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:4px 0;">' +
         '<input id="f_contactat" type="checkbox" '+(c&&c.contactat?'checked':'')+' style="width:16px;height:16px;accent-color:var(--accent);">' +
         '<label for="f_contactat" style="font-size:13px;color:var(--text2);cursor:pointer;">am luat legătura cu acest client</label></div>' +
+      '<div style="margin-top:14px;padding:12px;background:#fbf5ea;border:1px solid var(--warm-bg);border-radius:8px;">' +
+        '<div style="font-size:12px;font-weight:500;color:var(--warm-text);margin-bottom:8px;">Reapelare</div>' +
+        selectField('Motiv','f_recall_reason', ['Nu a răspuns','A cerut alt moment','Ocupat, revin eu'], c?c.nextCallReason:'', true) +
+        '<div style="margin-bottom:0;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">Data și ora reapelării</div>' +
+        '<input id="f_recall_at" type="datetime-local" value="'+esc(toDatetimeLocal(c?c.nextCallAt:''))+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;"></div>' +
+      '</div>' +
       (c?'<div style="font-size:11px;color:var(--text3);margin-top:6px;">adăugat pe '+fmtDate(c.addedAt)+'</div>':'') +
       '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:10px;"></div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">' +
@@ -1083,6 +1107,8 @@ const activityCol = collection(db, 'activity');
       nevoie: document.getElementById('f_nevoie').value.trim(),
       rezultat: document.getElementById('f_rezultat').value.trim(),
       contactat: document.getElementById('f_contactat').checked,
+      nextCallReason: document.getElementById('f_recall_reason').value,
+      nextCallAt: document.getElementById('f_recall_at').value ? new Date(document.getElementById('f_recall_at').value).toISOString() : '',
       updatedAt: new Date().toISOString()
     };
     if(editingClientId){
