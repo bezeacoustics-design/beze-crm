@@ -825,11 +825,11 @@ const activityCol = collection(db, 'activity');
         '<select id="filtLuna" class="filt"><option value="">toate lunile</option>' + monthFilterOptions() + '</select>' +
         '<select id="filtSursa" class="filt"><option value="">toate sursele</option>' + SURSE.map(s=>'<option value="'+s+'">'+s+'</option>').join('') + '</select>' +
         '<select id="filtStatus" class="filt"><option value="">toate statusurile</option><option value="da">contactat</option><option value="nu">de contactat</option><option value="reapelare">cu reapelare programată</option><option value="nu_raspuns">nu a răspuns</option></select>' +
-        '<select id="filtImportant" class="filt"><option value="">toți clienții</option><option value="da">doar importanți ⭐</option></select>' +
+        '<select id="filtImportant" class="filt"><option value="">toți clienții</option><option value="da">doar importanți ⭐</option><option value="nu_interesat">neinteresați ✕</option></select>' +
       '</div>' +
       '<div class="card" style="padding:0;overflow:hidden;">' +
         '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">' +
-          '<thead><tr><th style="padding-left:20px;width:32px;"></th><th>Nume</th><th>Telefon</th><th>Email</th><th>Sursă</th><th>Nevoie</th><th>Status</th><th style="padding-right:24px;">Adăugat</th></tr></thead>' +
+          '<thead><tr><th style="padding-left:20px;width:32px;"></th><th>Nume</th><th>Telefon</th><th>Email</th><th>Nevoie</th><th>Discuție tel.</th><th>Status</th><th>Adăugat</th><th style="padding-right:24px;">Sursă</th></tr></thead>' +
           '<tbody id="tbody"></tbody>' +
         '</table></div>' +
         '<div id="empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text3);"><div style="font-size:15px;">niciun client încă</div><div style="font-size:13px;margin-top:6px;">adaugă primul contact din formularele de reclame</div></div>' +
@@ -877,6 +877,7 @@ const activityCol = collection(db, 'activity');
       if(fst==='reapelare' && !(c.nextCallAt || c.nextCallReason)) return false;
       if(fst==='nu_raspuns' && c.nextCallReason!=='Nu a răspuns') return false;
       if(fimp==='da' && !c.important) return false;
+      if(fimp==='nu_interesat' && !c.notInterested) return false;
       return true;
     }).sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
     document.getElementById('empty').style.display = clients.length ? 'none':'block';
@@ -888,6 +889,7 @@ const activityCol = collection(db, 'activity');
   function clientRowEl(c){
     const tr = document.createElement('tr');
     tr.className = 'rowhover';
+    if(c.notInterested) tr.style.opacity = '0.5';
     const badge = c.contactat
       ? '<span class="pill" style="background:var(--accent-bg);color:var(--accent-dark);">contactat</span>'
       : '<span class="pill" style="background:var(--warm-bg);color:var(--warm-text);">de contactat</span>';
@@ -895,7 +897,7 @@ const activityCol = collection(db, 'activity');
       ? '<div style="font-size:11px;color:var(--warm-text);margin-top:4px;"><i class="ti ti-phone-outgoing" aria-hidden="true"></i> '+esc(c.nextCallReason||'reapelare')+(c.nextCallAt?' · '+fmtDateTime(c.nextCallAt):'')+'</div>'
       : '';
     const starTd = document.createElement('td');
-    starTd.style.paddingLeft = '20px';
+    starTd.style.cssText = 'padding-left:20px;white-space:nowrap;';
     const starIcon = document.createElement('i');
     starIcon.className = 'ti ti-star';
     starIcon.style.cssText = 'font-size:17px;cursor:pointer;color:'+(c.important?'#d9a53c':'var(--line-strong)')+';';
@@ -904,16 +906,26 @@ const activityCol = collection(db, 'activity');
       e.stopPropagation();
       await updateDoc(doc(db,'clients',c.id), { important: !c.important, updatedAt: new Date().toISOString() });
     });
+    const xIcon = document.createElement('i');
+    xIcon.className = 'ti ti-circle-x';
+    xIcon.style.cssText = 'font-size:17px;cursor:pointer;margin-left:8px;color:'+(c.notInterested?'#c0453f':'var(--line-strong)')+';';
+    xIcon.title = c.notInterested ? 'neinteresat — click să anulezi' : 'marchează ca neinteresat';
+    xIcon.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await updateDoc(doc(db,'clients',c.id), { notInterested: !c.notInterested, updatedAt: new Date().toISOString() });
+    });
     starTd.appendChild(starIcon);
+    starTd.appendChild(xIcon);
     tr.appendChild(starTd);
     tr.insertAdjacentHTML('beforeend',
       '<td style="font-weight:500;">'+esc(c.nume)+'</td>' +
       '<td class="mono">'+esc(c.telefon||'')+'</td>' +
       '<td>'+esc(c.email||'')+'</td>' +
-      '<td>'+esc(c.sursa||'')+'</td>' +
-      '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nevoie||'')+'</td>' +
+      '<td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nevoie||'')+'</td>' +
+      '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);">'+esc(c.rezultat||'')+'</td>' +
       '<td>'+badge+recall+'</td>' +
-      '<td style="padding-right:24px;color:var(--text3);">'+fmtDate(c.addedAt)+'</td>'
+      '<td style="color:var(--text3);">'+fmtDate(c.addedAt)+'</td>' +
+      '<td style="padding-right:24px;color:var(--text3);">'+esc(c.sursa||'')+'</td>'
     );
     tr.addEventListener('click', () => openClientModal(c.id));
     return tr;
@@ -967,7 +979,7 @@ const activityCol = collection(db, 'activity');
   /* ---------- SARCINI (TASKS) ---------- */
   function getTasks(){
     const tasks = [];
-    clients.forEach(c => {
+    clients.filter(c=>!c.notInterested).forEach(c => {
       if(c.nextCallAt){
         tasks.push({id:'ct_'+c.id, type:'client', mode:'recall', refId:c.id, label:(c.nextCallReason?c.nextCallReason+' — ':'')+'Sună din nou pe '+c.nume, sub: fmtDateTime(c.nextCallAt) + (c.telefon?' · '+c.telefon:''), ts:c.nextCallAt});
       } else if(!c.contactat){
@@ -1088,6 +1100,9 @@ const activityCol = collection(db, 'activity');
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:4px 0;">' +
         '<input id="f_important" type="checkbox" '+(c&&c.important?'checked':'')+' style="width:16px;height:16px;accent-color:#d9a53c;">' +
         '<label for="f_important" style="font-size:13px;color:var(--text2);cursor:pointer;">⭐ client important / potențial ridicat</label></div>' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:4px 0;">' +
+        '<input id="f_notinterested" type="checkbox" '+(c&&c.notInterested?'checked':'')+' style="width:16px;height:16px;accent-color:#c0453f;">' +
+        '<label for="f_notinterested" style="font-size:13px;color:var(--text2);cursor:pointer;">✕ neinteresat — nu mai suna, dar păstrează în bază</label></div>' +
       '<div style="margin-top:14px;padding:12px;background:#fbf5ea;border:1px solid var(--warm-bg);border-radius:8px;">' +
         '<div style="font-size:12px;font-weight:500;color:var(--warm-text);margin-bottom:8px;">Reapelare</div>' +
         selectField('Motiv','f_recall_reason', ['Nu a răspuns','A cerut alt moment','Ocupat, revin eu'], c?c.nextCallReason:'', true) +
@@ -1130,6 +1145,7 @@ const activityCol = collection(db, 'activity');
       rezultat: document.getElementById('f_rezultat').value.trim(),
       contactat: document.getElementById('f_contactat').checked,
       important: document.getElementById('f_important').checked,
+      notInterested: document.getElementById('f_notinterested').checked,
       nextCallReason: document.getElementById('f_recall_reason').value,
       nextCallAt: document.getElementById('f_recall_at').value ? new Date(document.getElementById('f_recall_at').value).toISOString() : '',
       updatedAt: new Date().toISOString()
