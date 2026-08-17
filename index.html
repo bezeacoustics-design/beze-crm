@@ -156,6 +156,7 @@ const activityCol = collection(db, 'activity');
   let dashRange = 'month';
   let charts = {};
   let resizingKey = null;
+  let todayCardOffset = 0;
   let dashResizeObserver = null;
 
   function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -165,9 +166,11 @@ const activityCol = collection(db, 'activity');
   function monthKey(iso){ const d=new Date(iso); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
   function monthLabel(key){ const [y,m]=key.split('-'); const names=['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','noi','dec']; return names[parseInt(m,10)-1]+' '+y.slice(2); }
   function isThisMonth(iso){ if(!iso) return false; const d=new Date(iso), n=new Date(); return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth(); }
-  function isToday(iso){
+  function isOnDay(iso, offsetDays){
     if(!iso) return false;
-    const d = new Date(iso), n = new Date();
+    const d = new Date(iso);
+    const n = new Date();
+    n.setDate(n.getDate() + (offsetDays||0));
     return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth() && d.getDate()===n.getDate();
   }
 
@@ -366,10 +369,18 @@ const activityCol = collection(db, 'activity');
         '<div style="font-size:11px;color:var(--text3);letter-spacing:0.05em;">(NUMĂR) CLIENȚI</div>' +
         '<div style="font-size:40px;font-weight:600;color:#0d5c56;margin-top:6px;">' + newContactsThisMonth() + '</div>' +
       '</div>';
-    if(key==='deSunatAzi') return '<div style="display:flex;flex-direction:column;height:100%;">' +
-      cardTitle('De sunat azi') + minipill(new Date().toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'})) +
-      '<div id="todayCallsList" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow-y:auto;margin-top:12px;"></div>' +
-    '</div>';
+    if(key==='deSunatAzi'){
+      const dayDate = new Date(); dayDate.setDate(dayDate.getDate() + todayCardOffset);
+      const dayLabel = todayCardOffset===0 ? 'De sunat azi' : 'De sunat mâine';
+      return '<div style="display:flex;flex-direction:column;height:100%;">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-right:44px;">' +
+          '<div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:500;color:#0d5c56;">'+dayLabel+'<i class="ti ti-info-circle" style="font-size:14px;color:var(--text3);" aria-hidden="true"></i></div>' +
+          '<i id="todayCardToggle" class="ti ti-chevron-right" style="font-size:18px;color:var(--accent-dark);cursor:pointer;" title="'+(todayCardOffset===0?'vezi mâine':'vezi azi')+'" aria-hidden="true"></i>' +
+        '</div>' +
+        minipill(dayDate.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'})) +
+        '<div id="todayCallsList" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow-y:auto;margin-top:12px;"></div>' +
+      '</div>';
+    }
     if(key==='clientiTimp') return '<div style="display:flex;flex-direction:column;height:100%;">' +
       cardTitle('Clienți adăugați în timp (cumulat)') + minipill('Total lunar') +
       '<div style="flex:1;min-height:60px;margin-top:14px;"><canvas id="chartOverTime"></canvas></div>' +
@@ -609,8 +620,8 @@ const activityCol = collection(db, 'activity');
 
     const todayList = document.getElementById('todayCallsList');
     if(todayList){
-      const todays = clients.filter(c => !c.notInterested && isToday(c.nextCallAt)).sort((a,b)=>(a.nextCallAt||'').localeCompare(b.nextCallAt||''));
-      if(todays.length===0){ todayList.innerHTML = '<div style="font-size:12px;color:var(--text3);">niciun apel programat azi</div>'; }
+      const todays = clients.filter(c => !c.notInterested && isOnDay(c.nextCallAt, todayCardOffset)).sort((a,b)=>(a.nextCallAt||'').localeCompare(b.nextCallAt||''));
+      if(todays.length===0){ todayList.innerHTML = '<div style="font-size:12px;color:var(--text3);">niciun apel programat '+(todayCardOffset===0?'azi':'mâine')+'</div>'; }
       todays.forEach(c => {
         const row = document.createElement('div');
         row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer;';
@@ -623,6 +634,8 @@ const activityCol = collection(db, 'activity');
         todayList.appendChild(row);
       });
     }
+    const todayToggle = document.getElementById('todayCardToggle');
+    if(todayToggle) todayToggle.addEventListener('click', () => { todayCardOffset = todayCardOffset===0 ? 1 : 0; renderPage(); });
 
     const miniTasks = document.getElementById('miniTasks');
     if(miniTasks){
