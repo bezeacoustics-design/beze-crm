@@ -43,6 +43,7 @@
   select.filt{background:#fff;border:1px solid var(--line-strong);color:var(--text2);padding:8px 12px;border-radius:8px;font-size:12.5px;outline:none;}
   .dashcard{border-radius:16px;}
   .dashcard::-webkit-resizer{background: linear-gradient(135deg, transparent 0 40%, var(--line-strong) 40% 50%, transparent 50% 60%, var(--line-strong) 60% 70%, transparent 70% 80%, var(--line-strong) 80% 90%, transparent 90%);}
+  .calday:hover{border-color:var(--accent) !important;}
   .cardhead{font-size:14px;font-weight:500;color:#33475b;margin-bottom:16px;display:flex;align-items:center;gap:8px;}
   .pagetitle{font-family:'Oswald',sans-serif;font-size:25px;font-weight:600;color:var(--text);letter-spacing:0.01em;}
   .pagesub{font-size:13px;color:var(--text3);margin-top:4px;}
@@ -129,6 +130,7 @@ const auth = getAuth(fbApp);
 const clientsCol = collection(db, 'clients');
 const dealsCol = collection(db, 'deals');
 const activityCol = collection(db, 'activity');
+const eventsCol = collection(db, 'events');
 
 (function(){
   const NAV = [
@@ -136,6 +138,7 @@ const activityCol = collection(db, 'activity');
     {key:'dashboard', label:'Acasă', icon:'ti-home'},
     {key:'clienti', label:'Clienți', icon:'ti-users'},
     {key:'oferte', label:'Oferte', icon:'ti-file-text'},
+    {key:'calendar', label:'Calendar', icon:'ti-calendar'},
     {key:'sarcini', label:'Sarcini', icon:'ti-checklist'},
     {key:'activitate', label:'Activitate', icon:'ti-history'},
     {key:'ghid', label:'Ghid', icon:'ti-headset'}
@@ -150,14 +153,17 @@ const activityCol = collection(db, 'activity');
   ];
 
   let currentView = 'dashboard';
-  let clients = [], deals = [], activity = [];
-  let loadedFlags = {clients:false, deals:false, activity:false};
-  let editingClientId = null, editingDealId = null;
+  let clients = [], deals = [], activity = [], events = [];
+  let loadedFlags = {clients:false, deals:false, activity:false, events:false};
+  let editingClientId = null, editingDealId = null, editingEventId = null;
   let dashRange = 'month';
   let charts = {};
   let resizingKey = null;
   let todayCardOffset = 0;
   let dashResizeObserver = null;
+  const now0 = new Date();
+  let calYear = now0.getFullYear(), calMonth = now0.getMonth();
+  let calSelectedDate = null;
 
   function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function fmtDate(iso){ if(!iso) return ''; const d=new Date(iso); return d.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'}); }
@@ -208,7 +214,7 @@ const activityCol = collection(db, 'activity');
   }
 
   function maybeInitialRender(){
-    if(loadedFlags.clients && loadedFlags.deals && loadedFlags.activity){
+    if(loadedFlags.clients && loadedFlags.deals && loadedFlags.activity && loadedFlags.events){
       setConnStatus('conectat · date live', true);
       renderPage();
     }
@@ -219,22 +225,30 @@ const activityCol = collection(db, 'activity');
     if(listenersStarted) return;
     listenersStarted = true;
 
+    function checkAllLoaded(){ return loadedFlags.clients && loadedFlags.deals && loadedFlags.activity && loadedFlags.events; }
+
     onSnapshot(clientsCol, snap => {
       clients = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
       loadedFlags.clients = true;
-      if(loadedFlags.deals && loadedFlags.activity) renderPage(); else maybeInitialRender();
+      if(checkAllLoaded()) renderPage(); else maybeInitialRender();
     }, err => { console.error(err); setConnStatus('eroare conexiune', false); });
 
     onSnapshot(dealsCol, snap => {
       deals = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
       loadedFlags.deals = true;
-      if(loadedFlags.clients && loadedFlags.activity) renderPage(); else maybeInitialRender();
+      if(checkAllLoaded()) renderPage(); else maybeInitialRender();
     }, err => console.error(err));
 
     onSnapshot(activityCol, snap => {
       activity = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
       loadedFlags.activity = true;
-      if(loadedFlags.clients && loadedFlags.deals) renderPage(); else maybeInitialRender();
+      if(checkAllLoaded()) renderPage(); else maybeInitialRender();
+    }, err => console.error(err));
+
+    onSnapshot(eventsCol, snap => {
+      events = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+      loadedFlags.events = true;
+      if(checkAllLoaded()) renderPage(); else maybeInitialRender();
     }, err => console.error(err));
   }
 
@@ -311,6 +325,7 @@ const activityCol = collection(db, 'activity');
     if(currentView==='dashboard'){ page.innerHTML = dashboardHtml(); wireDashboard(); }
     else if(currentView==='clienti'){ page.innerHTML = clientsHtml(); wireClients(); }
     else if(currentView==='oferte'){ page.innerHTML = dealsHtml(); wireDeals(); }
+    else if(currentView==='calendar'){ page.innerHTML = calendarHtml(); wireCalendar(); }
     else if(currentView==='sarcini'){ page.innerHTML = tasksHtml(); wireTasks(); }
     else if(currentView==='activitate'){ page.innerHTML = activityHtml(); }
     else { page.innerHTML = ghidHtml(); wireGhid(); }
@@ -849,6 +864,167 @@ const activityCol = collection(db, 'activity');
       : '<div class="card" style="text-align:center;color:var(--text3);padding:40px 20px;">alege un tip de spațiu mai sus</div>';
   }
 
+  /* ---------- CALENDAR ---------- */
+  const RO_MONTHS = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'];
+  const RO_DAYS = ['Lun','Mar','Mie','Joi','Vin','Sâm','Dum'];
+
+  function dateStr(y,m,d){ return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+  function todayStr(){ const n=new Date(); return dateStr(n.getFullYear(), n.getMonth(), n.getDate()); }
+
+  function itemsForDay(ds){
+    const calls = clients.filter(c => !c.notInterested && c.nextCallAt && c.nextCallAt.slice(0,10)===ds)
+      .map(c => ({ type:'call', time: new Date(c.nextCallAt).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}), label:'Sună pe '+c.nume, sub:c.nextCallReason||'', refId:c.id }));
+    const followUps = deals.filter(d => d.followUp===ds)
+      .map(d => ({ type:'deal', time:'', label:'Follow-up ofertă — '+d.clientNume, sub:'', refId:d.id }));
+    const custom = events.filter(e => e.date===ds)
+      .map(e => ({ type:'event', time:e.time||'', label:e.title, sub:e.notes||'', refId:e.id }));
+    return [...calls, ...followUps, ...custom].sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  }
+
+  function calendarHtml(){
+    const firstOfMonth = new Date(calYear, calMonth, 1);
+    const startOffset = (firstOfMonth.getDay()+6)%7; // Monday=0
+    const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+    const tStr = todayStr();
+
+    let cells = '';
+    for(let i=0;i<startOffset;i++) cells += '<div></div>';
+    for(let d=1; d<=daysInMonth; d++){
+      const ds = dateStr(calYear, calMonth, d);
+      const items = itemsForDay(ds);
+      const isToday = ds===tStr;
+      const preview = items.slice(0,2).map(it => {
+        const color = it.type==='call' ? 'var(--warm-text)' : it.type==='deal' ? 'var(--blue)' : 'var(--accent-dark)';
+        return '<div style="font-size:10.5px;color:'+color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;">'+(it.time?it.time+' ':'')+esc(it.label)+'</div>';
+      }).join('');
+      const more = items.length>2 ? '<div style="font-size:10px;color:var(--text3);margin-top:2px;">+'+(items.length-2)+' mai multe</div>' : '';
+      cells += '<div class="calday" data-date="'+ds+'" style="min-height:88px;border:1px solid var(--line);border-radius:8px;padding:6px 7px;cursor:pointer;background:'+(isToday?'var(--accent-bg)':'#fff')+';">' +
+        '<div style="font-size:12px;font-weight:'+(isToday?'700':'500')+';color:'+(isToday?'var(--accent-dark)':'var(--text)')+';">'+d+'</div>' +
+        preview + more +
+      '</div>';
+    }
+
+    return (
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">' +
+        '<div><div class="pagetitle">Calendar</div><div class="pagesub">apeluri programate + întâlniri</div></div>' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          '<i class="ti ti-chevron-left" id="calPrev" style="font-size:20px;cursor:pointer;color:var(--text2);" aria-hidden="true"></i>' +
+          '<span style="font-size:15px;font-weight:500;min-width:150px;text-align:center;">'+RO_MONTHS[calMonth]+' '+calYear+'</span>' +
+          '<i class="ti ti-chevron-right" id="calNext" style="font-size:20px;cursor:pointer;color:var(--text2);" aria-hidden="true"></i>' +
+          '<button id="calTodayBtn" class="btn" style="margin-left:6px;">azi</button>' +
+          '<button id="calAddBtn" class="btn-primary">+ eveniment</button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px;">' +
+        RO_DAYS.map(d=>'<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.03em;color:var(--text3);text-align:center;">'+d+'</div>').join('') +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">' + cells + '</div>'
+    );
+  }
+
+  function wireCalendar(){
+    document.getElementById('calPrev').addEventListener('click', () => { calMonth--; if(calMonth<0){calMonth=11;calYear--;} renderPage(); });
+    document.getElementById('calNext').addEventListener('click', () => { calMonth++; if(calMonth>11){calMonth=0;calYear++;} renderPage(); });
+    document.getElementById('calTodayBtn').addEventListener('click', () => { const n=new Date(); calYear=n.getFullYear(); calMonth=n.getMonth(); renderPage(); });
+    document.getElementById('calAddBtn').addEventListener('click', () => openEventModal(null, todayStr()));
+    document.querySelectorAll('.calday').forEach(cell => {
+      cell.addEventListener('click', () => openDayModal(cell.dataset.date));
+    });
+  }
+
+  function openDayModal(ds){
+    calSelectedDate = ds;
+    const items = itemsForDay(ds);
+    const d = new Date(ds+'T00:00:00');
+    const m = document.getElementById('modal');
+    m.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+        '<div style="font-size:15px;font-weight:500;">'+d.toLocaleDateString('ro-RO',{weekday:'long',day:'numeric',month:'long'})+'</div>' +
+        '<button id="closeModal" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">&times;</button>' +
+      '</div>' +
+      (items.length===0
+        ? '<div style="text-align:center;padding:30px 10px;color:var(--text3);font-size:13px;">nimic programat în ziua asta</div>'
+        : '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">' +
+            items.map(it => {
+              const color = it.type==='call' ? 'var(--warm-text)' : it.type==='deal' ? 'var(--blue)' : 'var(--accent-dark)';
+              const icon = it.type==='call' ? 'ti-phone-outgoing' : it.type==='deal' ? 'ti-file-text' : 'ti-calendar-event';
+              return '<div class="dayitem" data-type="'+it.type+'" data-ref="'+it.refId+'" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;'+(it.type==='event'?'cursor:pointer;':'')+'">' +
+                '<i class="ti '+icon+'" style="font-size:16px;color:'+color+';flex-shrink:0;" aria-hidden="true"></i>' +
+                '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:500;">'+(it.time?it.time+' — ':'')+esc(it.label)+'</div>' +
+                (it.sub?'<div style="font-size:11.5px;color:var(--text3);">'+esc(it.sub)+'</div>':'') + '</div>' +
+              '</div>';
+            }).join('') +
+          '</div>'
+      ) +
+      '<button id="dayAddBtn" class="btn" style="width:100%;">+ adaugă eveniment în această zi</button>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('dayAddBtn').onclick = () => openEventModal(null, ds);
+    m.querySelectorAll('.dayitem[data-type="event"]').forEach(el => {
+      el.addEventListener('click', () => openEventModal(el.dataset.ref, ds));
+    });
+    m.querySelectorAll('.dayitem[data-type="call"]').forEach(el => {
+      el.addEventListener('click', () => openClientModal(el.dataset.ref));
+    });
+  }
+
+  function openEventModal(id, defaultDate){
+    editingEventId = id || null;
+    const ev = id ? events.find(x=>x.id===id) : null;
+    const m = document.getElementById('modal');
+    m.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+        '<div style="font-size:15px;font-weight:500;">'+(ev?'Editează eveniment':'Eveniment nou')+'</div>' +
+        '<button id="closeModal" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">&times;</button>' +
+      '</div>' +
+      field('Titlu','f_ev_title', ev?ev.title:'') +
+      field('Data','f_ev_date', ev?ev.date:defaultDate, 'date') +
+      field('Oră (opțional)','f_ev_time', ev?ev.time:'', 'time') +
+      textareaField('Notițe','f_ev_notes', ev?ev.notes:'') +
+      '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:6px;"></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">' +
+        (ev?'<button id="deleteBtn" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;">șterge</button>':'<span></span>') +
+        '<div style="display:flex;gap:8px;"><button id="cancelBtn" class="btn">anulează</button><button id="saveBtn" class="btn-primary">salvează</button></div>' +
+      '</div>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('cancelBtn').onclick = closeModal;
+    document.getElementById('saveBtn').onclick = saveEvent;
+    if(ev) document.getElementById('deleteBtn').onclick = () => deleteEvent(ev.id);
+  }
+
+  async function saveEvent(){
+    const title = document.getElementById('f_ev_title').value.trim();
+    const date = document.getElementById('f_ev_date').value;
+    const errEl = document.getElementById('formError');
+    if(!title || !date){ errEl.textContent='completează titlul și data'; errEl.style.display='block'; return; }
+    errEl.style.display='none';
+    const data = {
+      title,
+      date,
+      time: document.getElementById('f_ev_time').value,
+      notes: document.getElementById('f_ev_notes').value.trim(),
+      updatedAt: new Date().toISOString()
+    };
+    if(editingEventId){
+      await updateDoc(doc(db,'events',editingEventId), data);
+      logActivity('Eveniment actualizat: '+title);
+    } else {
+      data.createdAt = new Date().toISOString();
+      await addDoc(eventsCol, data);
+      logActivity('Eveniment nou: '+title);
+    }
+    if(calSelectedDate) openDayModal(calSelectedDate); else closeModal();
+  }
+
+  async function deleteEvent(id){
+    if(!confirm('Ștergi acest eveniment?')) return;
+    const ev = events.find(x=>x.id===id);
+    await deleteDoc(doc(db,'events',id));
+    if(ev) logActivity('Eveniment șters: '+ev.title);
+    if(calSelectedDate) openDayModal(calSelectedDate); else closeModal();
+  }
+
   /* ---------- CLIENTI ---------- */
   function clientsHtml(){
     return (
@@ -1273,7 +1449,7 @@ const activityCol = collection(db, 'activity');
 
   function closeModal(){
     document.getElementById('modalWrap').style.display = 'none';
-    editingClientId = null; editingDealId = null;
+    editingClientId = null; editingDealId = null; editingEventId = null; calSelectedDate = null;
   }
 
   document.getElementById('topSearch').addEventListener('keydown', (e) => {
