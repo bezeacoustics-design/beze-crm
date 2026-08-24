@@ -639,13 +639,33 @@ const eventsCol = collection(db, 'events');
       if(todays.length===0){ todayList.innerHTML = '<div style="font-size:12px;color:var(--text3);">niciun apel programat '+(todayCardOffset===0?'azi':'mâine')+'</div>'; }
       todays.forEach(c => {
         const row = document.createElement('div');
-        row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);cursor:pointer;';
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);';
         const timeStr = new Date(c.nextCallAt).toLocaleTimeString('ro-RO', {hour:'2-digit', minute:'2-digit'});
-        row.innerHTML =
-          '<div style="min-width:0;"><div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nume)+'</div>' +
-          (c.nextCallReason ? '<div style="color:var(--text3);font-size:11px;">'+esc(c.nextCallReason)+'</div>' : '') + '</div>' +
-          '<div style="color:var(--warm-text);font-weight:500;white-space:nowrap;">'+timeStr+'</div>';
-        row.addEventListener('click', () => openClientModal(c.id));
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'width:16px;height:16px;accent-color:var(--accent);flex-shrink:0;cursor:pointer;';
+        cb.title = 'am luat legătura — marchează ca rezolvat';
+        cb.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await updateDoc(doc(db,'clients',c.id), { contactat:true, nextCallAt:'', nextCallReason:'', updatedAt:new Date().toISOString() });
+          logActivity('Marcat ca și contactat: '+c.nume);
+        });
+
+        const info = document.createElement('div');
+        info.style.cssText = 'flex:1;min-width:0;cursor:pointer;';
+        info.innerHTML =
+          '<div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nume)+'</div>' +
+          (c.nextCallReason ? '<div style="color:var(--text3);font-size:11px;">'+esc(c.nextCallReason)+'</div>' : '');
+        info.addEventListener('click', () => openClientModal(c.id));
+
+        const timeEl = document.createElement('div');
+        timeEl.style.cssText = 'color:var(--warm-text);font-weight:500;white-space:nowrap;';
+        timeEl.textContent = timeStr;
+
+        row.appendChild(cb);
+        row.appendChild(info);
+        row.appendChild(timeEl);
         todayList.appendChild(row);
       });
     }
