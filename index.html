@@ -177,6 +177,9 @@ const dealsCol = collection(db, 'deals');
 const activityCol = collection(db, 'activity');
 const eventsCol = collection(db, 'events');
 
+const ADMIN_EMAIL = 'beiathedj@gmail.com';
+function isAdmin(){ return !!(auth.currentUser && auth.currentUser.email === ADMIN_EMAIL); }
+
 (function(){
   const NAV = [
 
@@ -1392,14 +1395,14 @@ const eventsCol = collection(db, 'events');
       (c?'<div style="font-size:11px;color:var(--text3);margin-top:6px;">adăugat pe '+fmtDate(c.addedAt)+'</div>':'') +
       '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:10px;"></div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">' +
-        (c?'<button id="deleteBtn" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;">șterge client</button>':'<span></span>') +
+        (c && isAdmin()?'<button id="deleteBtn" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;">șterge client</button>':'<span></span>') +
         '<div style="display:flex;gap:8px;"><button id="cancelBtn" class="btn">anulează</button><button id="saveBtn" class="btn-primary">salvează</button></div>' +
       '</div>';
     document.getElementById('modalWrap').style.display = 'flex';
     document.getElementById('closeModal').onclick = closeModal;
     document.getElementById('cancelBtn').onclick = closeModal;
     document.getElementById('saveBtn').onclick = saveClient;
-    if(c) document.getElementById('deleteBtn').onclick = () => deleteClient(c.id);
+    if(c && isAdmin()) document.getElementById('deleteBtn').onclick = () => deleteClient(c.id);
     document.getElementById('f_telefon').addEventListener('input', (e) => {
       e.target.value = formatRoPhoneDigits(digitsOnly(e.target.value));
     });
@@ -1442,6 +1445,7 @@ const eventsCol = collection(db, 'events');
   }
 
   async function deleteClient(id){
+    if(!isAdmin()) return;
     const c = clients.find(x=>x.id===id);
     if(!confirm('Ștergi definitiv clientul "'+(c?c.nume:'')+'"? Nu poate fi recuperat.')) return;
     await deleteDoc(doc(db,'clients',id));
