@@ -1152,7 +1152,13 @@ function isAdmin(){ return !!(auth.currentUser && auth.currentUser.email === ADM
     const fst = document.getElementById('filtStatus').value;
     const fimp = document.getElementById('filtImportant').value;
     const filtered = clients.filter(c => {
-      if(q && !c.nume.toLowerCase().includes(q) && !(c.telefon||'').toLowerCase().includes(q) && !digitsOnly(c.telefon).includes(digitsOnly(q))) return false;
+      if(q){
+        const qDigits = digitsOnly(q);
+        const nameMatch = c.nume.toLowerCase().includes(q);
+        const phoneMatch = (c.telefon||'').toLowerCase().includes(q);
+        const digitMatch = qDigits.length>0 && digitsOnly(c.telefon).includes(qDigits);
+        if(!nameMatch && !phoneMatch && !digitMatch) return false;
+      }
       if(fl && monthKey(c.addedAt)!==fl) return false;
       if(fs && c.sursa!==fs) return false;
       if(fst==='da' && !c.contactat) return false;
