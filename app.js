@@ -233,6 +233,12 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   function renderPage(){
     destroyCharts();
     const page = document.getElementById('page');
+    // Până vin datele din Firebase nu desenăm cifre: zerourile de dinainte păreau „a dispărut tot” (Beia, 13 Nov).
+    // Ghidul nu are nevoie de date, deci se deschide oricând.
+    if(currentView !== 'ghid' && !Object.values(loadedFlags).every(Boolean)){
+      page.innerHTML = '<div style="padding:60px 0;text-align:center;color:var(--text3);font-size:14px;"><i class="ti ti-loader-2" aria-hidden="true" style="font-size:22px;display:block;margin-bottom:8px;"></i>Se încarcă datele…</div>';
+      return;
+    }
     if(currentView==='azi'){ page.innerHTML = aziHtml(); wireAzi(); }
     else if(currentView==='clienti'){ page.innerHTML = clientsHtml(); wireClients(); }
     else if(currentView==='etape'){ page.innerHTML = etapeHtml(); wireEtape(); }
