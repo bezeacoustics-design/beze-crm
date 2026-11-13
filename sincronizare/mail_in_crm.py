@@ -481,7 +481,8 @@ def ruleaza(args):
             notificare('BEZE CRM: client nou', '%s · %s' % (c['nume'], ' · '.join(x for x in [c['tipSpatiu'], c['problema']] if x)))
         elif len(proaspete) > 1:
             notificare('BEZE CRM', '%d clienți noi din formularul de pe site' % len(proaspete))
-    print('%s  %s: %d noi, %d sărite, %d erori' % (iso(acum)[:19], 'PROBĂ' if args.proba else 'gata', len(noi), sarite, erori))
+    if args.proba or noi or sarite or erori:   # la rulările de rutină, fără nimic nou, nu scrie în jurnal
+        print('%s  %s: %d noi, %d sărite, %d erori' % (iso(acum)[:19], 'PROBĂ' if args.proba else 'gata', len(noi), sarite, erori))
     return 1 if erori else 0
 
 

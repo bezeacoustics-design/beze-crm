@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- BEZE CRM: la fiecare 5 minute aduce în CRM clienții din mailurile Shopify de pe contact@.
+     Se instalează cu sincronizare/instaleaza.sh. Jurnalul: ~/Library/Logs/BEZE-crm-mail.log -->
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>ro.beze.crm-mail</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/usr/bin/python3</string>
+		<string>/Users/beia/beze-crm/sincronizare/mail_in_crm.py</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/beia/beze-crm/sincronizare</string>
+	<key>EnvironmentVariables</key>
+	<dict>
+		<key>PYTHONUNBUFFERED</key>
+		<string>1</string>
+	</dict>
+	<key>StartInterval</key>
+	<integer>300</integer>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>StandardOutPath</key>
+	<string>/Users/beia/Library/Logs/BEZE-crm-mail.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/beia/Library/Logs/BEZE-crm-mail.log</string>
+</dict>
+</plist>
