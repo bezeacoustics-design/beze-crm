@@ -7,6 +7,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import * as L from "./lead.js";
 import * as E from "./etape.js";
+import * as G from "./ghid.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDU_QIv1zVKAbhlNDnWeg6ZaDTGvVaHuCs",
@@ -289,6 +290,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     container.querySelectorAll('[data-stop]').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
     container.querySelectorAll('[data-fisa]').forEach(el => el.addEventListener('click', () => openClientModal(el.dataset.fisa)));
     container.querySelectorAll('[data-gata]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); openGataModal(b.dataset.gata, b.dataset.etapa || null); }));
+    container.querySelectorAll('[data-apel]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); openApelModal(b.dataset.apel); }));
     container.querySelectorAll('[data-uneste]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); uneste(b.dataset.uneste, b.dataset.vechi); }));
     container.querySelectorAll('[data-separat]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); nuEAcelasi(b.dataset.separat); }));
   }
@@ -318,7 +320,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     const nesunati = A.nesunati.map(({c}) => randAzi(c,
       '<div style="font-weight:500;">'+esc(c.nume)+'</div><div style="font-size:12px;color:var(--text2);">'+esc([spatiuScurt(c), c.problema].filter(Boolean).join(' · ') || c.email || '')+'</div>',
       '<span style="color:'+culoareVechime(c.addedAt)+';font-weight:500;">'+esc(L.vechime(c.addedAt))+'</span>',
-      butoaneContact(c) + '<button class="btn-primary" data-gata="'+c.id+'" style="padding:6px 12px;font-size:12px;">Gata</button>')).join('');
+      '<button class="btn" data-apel="'+c.id+'" style="padding:6px 10px;font-size:12px;"><i class="ti ti-headset" aria-hidden="true"></i> Ghid</button>' + butoaneContact(c) + '<button class="btn-primary" data-gata="'+c.id+'" style="padding:6px 12px;font-size:12px;">Gata</button>')).join('');
     const revenit = A.revenit.map(({c, vechi}) => randAzi(c,
       '<div style="font-weight:500;">'+esc(c.nume)+' <span style="font-size:12px;color:var(--text3);font-weight:400;">a completat din nou formularul, '+esc(L.vechime(c.addedAt))+'</span></div>' +
       '<div style="font-size:12px;color:var(--text2);">acum: '+esc([spatiuScurt(c), c.problema].filter(Boolean).join(' · ') || '-')+'</div>' +
@@ -406,7 +408,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   }
   let gata = null;
 
-  function openGataModal(id, etapaAleasa){
+  function openGataModal(id, etapaAleasa, textInitial){
     const c = clients.find(x => x.id === id);
     if(!c) return;
     const eAcum = E.etapaClient(c, deals);
@@ -419,7 +421,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
       '<div style="font-size:12px;color:var(--text3);margin-bottom:12px;">acum: '+etapaPill(eAcum, true)+(p.la?' · pas: '+esc(p.ce||'')+' · '+esc(cand(p.la)):'')+'</div>' +
       sectionTitle('Ce s-a întâmplat') +
       '<div id="gTip" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">' + E.TIPURI_ISTORIC.map(t => chip('tip', t.key, t.label, t.key==='apel')).join('') + '</div>' +
-      '<textarea id="gText" rows="2" placeholder="pe scurt, de exemplu: a zis că trimite poze diseară" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;resize:vertical;font-family:inherit;"></textarea>' +
+      '<textarea id="gText" rows="'+(textInitial?4:2)+'" placeholder="pe scurt, de exemplu: a zis că trimite poze diseară" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;resize:vertical;font-family:inherit;">'+esc(textInitial||'')+'</textarea>' +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px;">' + ['Nu a răspuns','Trimite poze și cote','Vrea studiul la fața locului','Vrea ofertă','Nu mai e interesat'].map(t => '<button type="button" class="btn" data-text="'+esc(t)+'" style="padding:4px 9px;font-size:11.5px;">'+t+'</button>').join('') + '</div>' +
       sectionTitle('Etapa') +
       '<div id="gEtapa" style="display:flex;gap:6px;flex-wrap:wrap;">' + E.ETAPE.map(e => chip('etapa', e.key, e.label, e.key===gata.etapa)).join('') + '</div>' +
@@ -652,181 +654,145 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     }catch(err){ console.error('Eroare la grafic:', err); }
   }
 
-  /* ---------- GHID CONSULTANȚĂ ---------- */
-  const INTAKE_ORDER = ['Tip spațiu + scop', 'Dimensiuni', 'Materiale construcție / mobilier existent', 'Problema specifică', 'Poze', 'Buget'];
-
-  const CALL_STEPS = [
-    'Deschidere + context — te prezinți, reamintești de ce suni, ceri permisiunea ("aveți 5 minute acum?")',
-    'Întrebări de diagnostic, nu vânzare încă',
-    'Clarifică izolație fonică vs. tratament acustic — panourile NU opresc sunetul să treacă prin pereți, doar controlează ecoul din interior',
-    'Reflectă problema înapoi + explică principiul pe scurt — arată că ai ascultat',
-    'Propune un pas concret — vizită/măsurătoare, plan orientativ, sau recomandare de kit',
-    'Gestionează obiecțiile fără presiune — află ce anume îi reține',
-    'Închide cu un pas clar — dată/oră exactă de follow-up, nu "ne mai auzim"'
-  ];
-
-  const SPACE_GUIDES = {
-    studio: {
-      label: 'Studio', icon: 'ti-microphone-2', color: '#3576c9',
-      obiectiv: 'Monitorizare neutră — ce auzi la mixaj trebuie să fie exact ce e în fișier, nu colorat de cameră.',
-      rt60: 'Scurt, echilibrat pe toate frecvențele. Cameră "uscată", nu "live".',
-      ordine: ['Reflexii timpurii (tavan + pereți laterali)', 'Perete spate', 'Perete frontal', 'Colțuri', 'Reflexii târzii', 'Colțuri de tavan'],
-      reguli: [
-        'Simetrie critică — identică stânga/dreapta față de poziția de mix',
-        'Boxe: evită "zona periculoasă" SBIR — fie lipite de perete, fie la minim 90cm distanță (nu la mijloc)',
-        'Mai gros = mai jos în frecvență; spațiul de aer (air gap) dintre panou și perete crește mult performanța',
-        'Bass trapping agresiv, în toate colțurile, stivuit podea-tavan dacă spațiul permite',
-        'Difuzie minimă/deloc, se preferă absorbție',
-        '30-40% acoperire e suficientă pentru un rezultat bun — nu trebuie 100%'
-      ],
-      atentionari: [
-        'Panouri sub 10cm grosime prind doar high-mid, nu și sub ~120Hz — setează așteptări clare la bugete mici',
-        'Izolație fonică (vecini, bleed) e o discuție separată de tratamentul acustic',
-        'Nu menționa REW la primul apel — doar dacă clientul e serios/audiophile, ca pas 2'
-      ]
-    },
-    hifi: {
-      label: 'Hi-Fi', icon: 'ti-disc', color: '#1f8f72',
-      obiectiv: 'Experiență muzicală plăcută, naturală, cu imagine stereo precisă.',
-      rt60: 'Echilibrat, cu puțină "viață" păstrată — nu la fel de uscat ca un studio.',
-      ordine: ['Poziționare boxe + poziție de ascultare', 'Reflexii timpurii (laterale + tavan)', 'Colțuri (bass traps)', 'Perete spate'],
-      reguli: [
-        'Boxe în triunghi echilateral cu poziția de ascultare, toe-in ușor spre ascultător',
-        'Poziția scaunului la ~38% din lungimea camerei — evită centrul exact (acolo sunt cele mai puternice anulări de bas)',
-        'Simetrie: distanțe egale de la scaun la fiecare boxă / perete lateral',
-        '"Mirror trick" pentru reflexii: oglindă pe peretele lateral, te miști până vezi boxa — acolo pui panoul',
-        'Bass traps în toate cele 4 colțuri, stivuite podea-tavan dacă se poate',
-        'Difuzie valorizată, mai ales pe peretele spate'
-      ],
-      atentionari: [
-        'Foam nu ține jos în frecvență — rockwool/fibră densă e necesară pentru bas',
-        'Tratamentul complet e ideal, dar reflexii timpurii + colțuri + perete spate dau cel mai vizibil rezultat pentru bani'
-      ]
-    },
-    hometheater: {
-      label: 'Home Theater', icon: 'ti-device-tv', color: '#c94f8f',
-      obiectiv: 'Claritate dialog + impact cinematic, pentru mai multe scaune — nu un singur ascultător.',
-      rt60: 'Scurt, similar unui studio.',
-      ordine: ['Colțuri (fundația controlului de bas)', 'Pereți laterali + tavan (zona critică de dialog)', 'Perete spate (difuzie)', 'Perete frontal (bass trapping)'],
-      reguli: [
-        'Se tratează ZONE, nu puncte — sunt mai multe scaune și, în sisteme Atmos, 11+ boxe',
-        'Colțuri: cele mai mari/groase device-uri posibile',
-        'Pereți laterali + tavan între boxe și scaune = zona critică pentru claritatea dialogului',
-        'Perete spate: difuzie, nu absorbție totală — altfel camera "se simte mică"',
-        'Perete frontal (spatele ecranului): bass trapping, ideal cu tehnologie range-limited ca să nu omoare tot înaltul',
-        'Scaunele NU lipite de peretele din spate — acolo presiunea de bas e maximă'
-      ],
-      atentionari: [
-        'Subwoofere multiple + poziționare inteligentă ajută, dar nu înlocuiesc bass traps fizice',
-        'Nu confunda cu izolație fonică — tratamentul nu oprește vecinii/familia să audă filmul'
-      ]
-    },
-    comercial: {
-      label: 'Comercial', icon: 'ti-building-store', color: '#d98e4c',
-      obiectiv: 'Claritate vorbire, reducere oboseală — argument de business (productivitate), NU "sunet perfect".',
-      rt60: 'Redus, dar nu "mort" — țintă un nivel confortabil de conversație.',
-      ordine: ['Tavan (cea mai eficientă suprafață)', 'Acoperire uniformă pe toți pereții', 'Zone sensibile (săli de conferință, birouri) — tratament premium'],
-      reguli: [
-        'Tavanul e cel mai eficient loc de tratat — suprafață mare, aproape de toată lumea',
-        'Acoperire UNIFORMĂ pe toată camera — esențial de explicat clientului',
-        'Zone sensibile (săli de conferință, birouri de conducere) — tratament premium, motivat de confidențialitate + profesionalism',
-        'Panouri freestanding / gobo-uri utile între zone de lucru deschise'
-      ],
-      atentionari: [
-        'Un singur perete tratat lasă flutter echo pe restul — argument bun împotriva "vreau doar câteva panouri"',
-        'Vinde productivitate și claritate, nu acuratețe muzicală',
-        'Cost per m² contează mult — suprafețele sunt de obicei mari'
-      ]
-    },
-    podcast: {
-      label: 'Podcast', icon: 'ti-microphone', color: '#c0453f',
-      obiectiv: 'Claritate vocală, semnal "uscat"/necolorat — orice "viață" se adaugă în editare, nu se captează în cameră.',
-      rt60: 'Cel mai scurt dintre toate tipurile de spații.',
-      ordine: ['Tavan, direct deasupra microfonului', 'Colțuri (bass, chiar și pentru voce)', 'Pereți laterali, aproape de mic'],
-      reguli: [
-        'NU camera cea mai mică posibilă (tip dulap) — creează rezonanțe "boxy" greu de reparat în post',
-        'Frecvența fundamentală a vocii: ~100Hz bărbați, ~200Hz femei — lungimea de undă la 100Hz e 3.43m, se comportă ca un bas',
-        'Panouri minim ~10cm grosime, nu doar high-mid subțire de 5cm',
-        'Colțurile contează și aici, nu doar reflexiile de pe pereți',
-        'Mai mulți invitați: microfoanele orientate să nu se "audă" reciproc (zona surdă a unui cardioid e spatele lui)'
-      ],
-      atentionari: [
-        'NU recomanda difuzie — la 15-30cm de mic, reflexiile difuzate ajung aproape la fel de repede ca sunetul direct, deci colorează în loc să "aerisească"',
-        'Izolație fonică foarte importantă — zgomotul de fundal strică orice înregistrare',
-        'Cameră prea mică, tip dulap = greșeală comună de evitat la alegerea spațiului'
-      ]
-    }
-  };
-
-  let selectedSpace = null;
+  /* ---------- GHID PENTRU APEL ---------- */
+  const LOC_GENERIC = { nume:'[numele clientului]', expeditor:'[numele tău]', spatiu:'[spațiul, din formular]', suprafata:' [de … m²]', problema:'[și că vă deranjează …]', pasUrmator:'[pasul stabilit]' };
+  function generic(text){ return String(text).replace(/\{(\w+)\}/g, (m, k) => LOC_GENERIC[k] || m); }
+  function citat(text){ return '<div style="background:#f3faf7;border-left:3px solid var(--accent);padding:9px 12px;border-radius:0 8px 8px 0;font-size:13.5px;margin:6px 0;line-height:1.5;">„'+esc(text)+'”</div>'; }
+  function lista(items){ return '<ul style="margin:6px 0;padding-left:18px;display:flex;flex-direction:column;gap:4px;">' + items.map(x => '<li style="font-size:13px;color:var(--text2);line-height:1.45;">'+esc(x)+'</li>').join('') + '</ul>'; }
+  function cardGhid(nr, titlu, corp){
+    return '<div class="card ghidcard" style="padding:20px 22px;margin-bottom:14px;">' +
+      '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">' +
+        (nr ? '<span style="width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-size:13px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;">'+nr+'</span>' : '') +
+        '<span style="font-size:15.5px;font-weight:600;">'+esc(titlu)+'</span></div>' + corp + '</div>';
+  }
+  function tabel(cap, randuri){
+    return '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr>' + cap.map(h => '<th style="text-transform:none;letter-spacing:0;font-size:12px;padding:8px 10px;">'+esc(h)+'</th>').join('') + '</tr></thead><tbody>' +
+      randuri.map(r => '<tr>' + r.map(x => '<td style="font-size:13px;padding:9px 10px;vertical-align:top;line-height:1.45;">'+esc(x)+'</td>').join('') + '</tr>').join('') + '</tbody></table></div>';
+  }
+  function corpPas(p){
+    let h = '';
+    if(p.faci) h += lista(p.faci);
+    (p.spui || []).forEach(s => { h += citat(generic(s)); });
+    if(p.daca && p.daca.length) h += '<div style="font-size:12px;color:var(--text3);margin-top:8px;">Dacă:</div>' + tabel(['Situația','Ce faci'], p.daca.map(([a,b]) => [a, generic(b)]));
+    return h;
+  }
 
   function ghidHtml(){
+    const pas = k => G.PASI.find(p => p.cheie === k);
+    const grupuri = [...new Set(G.INTREBARI.map(i => i.grup))];
     return (
-      '<div style="margin-bottom:18px;"><div class="pagetitle">Ghid consultanță</div><div class="pagesub">reper rapid pentru discuția cu clientul — alege tipul de spațiu</div></div>' +
-
-      '<div class="card" style="margin-bottom:16px;">' +
-        '<div class="cardhead"><i class="ti ti-list-numbers" aria-hidden="true"></i>Ordinea de întrebări pentru orice client</div>' +
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
-          INTAKE_ORDER.map((q,i) => '<span class="pill" style="background:var(--accent-bg);color:var(--accent-dark);">'+(i+1)+'. '+q+'</span>').join('') +
-        '</div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:18px;flex-wrap:wrap;gap:12px;">' +
+        '<div><div class="pagetitle">Ghid pentru apel</div><div class="pagesub">pentru oricine sună clienții · versiunea '+esc(G.VERSIUNE)+' · în fișa fiecărui client, „Ghid pentru apel” îl arată completat pentru omul respectiv</div></div>' +
+        '<button id="ghidPrint" class="btn no-print"><i class="ti ti-printer" aria-hidden="true"></i> tipărește sau salvează PDF</button>' +
       '</div>' +
-
-      '<div class="card" style="margin-bottom:20px;">' +
-        '<div class="cardhead"><i class="ti ti-phone-call" aria-hidden="true"></i>Structura apelului</div>' +
-        '<div style="display:flex;flex-direction:column;gap:6px;">' +
-          CALL_STEPS.map((s,i) => '<div style="font-size:13px;color:var(--text2);"><span style="color:var(--accent-dark);font-weight:600;">'+(i+1)+'.</span> '+esc(s)+'</div>').join('') +
-        '</div>' +
-      '</div>' +
-
-      '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;" id="spaceButtons"></div>' +
-
-      '<div id="spaceContent"></div>'
+      cardGhid('', 'Pe scurt', '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;">' +
+        G.PRINCIPII.map(p => '<div style="background:#faf9f6;border:1px solid var(--line);border-radius:10px;padding:12px 14px;"><div style="font-weight:600;font-size:13.5px;margin-bottom:4px;">'+esc(p.titlu)+'</div><div style="font-size:12.5px;color:var(--text2);line-height:1.45;">'+esc(p.text)+'</div></div>').join('') + '</div>') +
+      cardGhid(1, pas('inainte').titlu, corpPas(pas('inainte'))) +
+      cardGhid(2, pas('deschidere').titlu, corpPas(pas('deschidere'))) +
+      cardGhid(3, pas('confirmare').titlu, corpPas(pas('confirmare'))) +
+      cardGhid(4, pas('intrebari').titlu, corpPas(pas('intrebari')) + grupuri.map(g =>
+        '<div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin:12px 0 2px;">'+esc(g)+'</div>' +
+        G.INTREBARI.filter(i => i.grup === g).map(i => citat(i.intreb) + (i.ajutor ? '<div style="font-size:12px;color:var(--text3);margin:-2px 0 6px 15px;">'+esc(i.ajutor)+'</div>' : '')).join('')).join('')) +
+      cardGhid(5, pas('explicatie').titlu, corpPas(pas('explicatie')) + L.PROBLEMA.map(pr =>
+        '<div style="font-size:12.5px;font-weight:600;margin:12px 0 0;">'+esc(pr)+'</div>' + citat(G.EXPLICATII[pr])).join('')) +
+      cardGhid(6, pas('pas').titlu, corpPas(pas('pas')) +
+        tabel(['Când','Propui','Rezerva'], [
+          ['Bas necontrolat sau mixuri care sună diferit', 'Studiul la fața locului', 'Recomandare pe poze'],
+          ['Restaurant, sală de repetiții sau peste 40 m²', 'Studiul la fața locului', 'Recomandare pe poze'],
+          ['Cameră mică (până la 20 m²) cu ecou, voce neclară sau „nu știu”', 'Recomandare pe poze', 'Setul din magazin'],
+          ['Izolare față de vecini sau home cinema', 'Îl dai lui Beia', '-'],
+          ['Orice altceva', 'Recomandare pe poze', 'Studiul la fața locului']
+        ]) +
+        ['poze','studiu','kit','beia'].map(k => '<div style="font-size:12.5px;font-weight:600;margin:14px 0 0;">'+esc(G.TREPTE[k].titlu)+'</div>' + citat(G.TREPTE[k].spui) + '<div style="font-size:12px;color:var(--text3);margin-left:15px;">După apel: '+esc(G.TREPTE[k].dupa)+'</div>').join('') +
+        '<div style="font-size:12.5px;font-weight:600;margin:14px 0 4px;">Seturile din magazin (prețuri de pe site, 13 noiembrie 2026)</div>' + tabel(['Set','Preț','Pentru'], G.SETURI)) +
+      cardGhid(7, pas('inchidere').titlu, corpPas(pas('inchidere'))) +
+      cardGhid('', 'Când clientul spune…', tabel(['Clientul spune','Tu răspunzi','Notă'], G.OBIECTII)) +
+      cardGhid('', 'Ce nu spui niciodată', tabel(['Nu spui','Spui în loc'], G.NICIODATA)) +
+      cardGhid('', 'Când îl dai lui Beia', lista(G.LA_BEIA) + '<div style="font-size:12.5px;color:var(--text2);margin-top:6px;">Cum: la „Gata” scrii „Pentru Beia: …” cu ce ai aflat, iar pasul următor e „Beia sună”, la ora stabilită cu clientul.</div>') +
+      cardGhid('', 'Pe tipul spațiului', '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;">' +
+        Object.entries(G.SPATII).map(([nume, s]) => '<div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;"><div style="font-weight:600;font-size:13.5px;margin-bottom:6px;">'+esc(nume)+'</div>' +
+          [['Vrea', s.vrea], ['Întrebi în plus', s.intrebi], ['Propui', s.propui], ['Atenție', s.atentie]].filter(x => x[1]).map(([a,b]) => '<div style="font-size:12.5px;line-height:1.45;margin-bottom:4px;"><span style="color:var(--text3);">'+a+':</span> '+esc(b)+'</div>').join('') + '</div>').join('') + '</div>') +
+      '<div class="card ghidcard" style="padding:16px 20px;margin-bottom:14px;background:#fbf5ea;border-color:var(--warm-bg);"><div style="font-weight:600;font-size:13.5px;color:var(--warm-text);margin-bottom:4px;">De confirmat de Beia, înainte să-l folosească altcineva</div>' + lista(G.DE_CONFIRMAT) + '</div>' +
+      '<div style="font-size:11.5px;color:var(--text3);line-height:1.6;margin-bottom:20px;"><b>Surse.</b> ' + G.SURSE.map(esc).join(' ') + '</div>'
     );
   }
-
-  function spaceButtonEl(key, g){
-    const btn = document.createElement('button');
-    const active = selectedSpace === key;
-    btn.style.cssText = 'flex:1;min-width:110px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border-radius:12px;cursor:pointer;border:2px solid '+(active?g.color:'var(--line-strong)')+';background:'+(active?g.color+'14':'#fff')+';transition:all 0.15s;';
-    btn.innerHTML = '<i class="ti '+g.icon+'" style="font-size:24px;color:'+g.color+';" aria-hidden="true"></i><span style="font-size:12.5px;font-weight:500;color:var(--text);">'+g.label+'</span>';
-    btn.addEventListener('click', () => { selectedSpace = key; renderPage(); });
-    return btn;
-  }
-
-  function spaceContentHtml(key){
-    const g = SPACE_GUIDES[key];
-    return (
-      '<div class="card" style="border-top:4px solid '+g.color+';">' +
-        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">' +
-          '<i class="ti '+g.icon+'" style="font-size:22px;color:'+g.color+';" aria-hidden="true"></i>' +
-          '<span style="font-size:19px;font-weight:600;font-family:\'Oswald\',sans-serif;">'+g.label+'</span>' +
-        '</div>' +
-
-        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:4px;">Obiectiv / ce vinzi de fapt</div>' +
-        '<div style="font-size:14px;color:var(--text);">'+esc(g.obiectiv)+'</div></div>' +
-
-        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:4px;">RT60 țintă</div>' +
-        '<div style="font-size:14px;color:var(--text);">'+esc(g.rt60)+'</div></div>' +
-
-        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:8px;">Ordinea de tratament</div>' +
-        '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + g.ordine.map((o,i)=>'<span class="pill" style="background:'+g.color+'14;color:'+g.color+';">'+(i+1)+'. '+esc(o)+'</span>').join(' → ') + '</div></div>' +
-
-        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:8px;">Reguli cheie</div>' +
-        '<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">' + g.reguli.map(r=>'<li style="font-size:13.5px;color:var(--text2);">'+esc(r)+'</li>').join('') + '</ul></div>' +
-
-        '<div><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--warm-text);margin-bottom:8px;">⚠ Atenționări</div>' +
-        '<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">' + g.atentionari.map(a=>'<li style="font-size:13.5px;color:var(--text);">'+esc(a)+'</li>').join('') + '</ul></div>' +
-      '</div>'
-    );
-  }
-
   function wireGhid(){
-    const btnRow = document.getElementById('spaceButtons');
-    Object.keys(SPACE_GUIDES).forEach(key => btnRow.appendChild(spaceButtonEl(key, SPACE_GUIDES[key])));
-    const contentEl = document.getElementById('spaceContent');
-    contentEl.innerHTML = selectedSpace
-      ? spaceContentHtml(selectedSpace)
-      : '<div class="card" style="text-align:center;color:var(--text3);padding:40px 20px;">alege un tip de spațiu mai sus</div>';
+    document.getElementById('ghidPrint').addEventListener('click', () => window.print());
+  }
+
+  const CAMPURI_APEL = ['folosire','deranjeaza','incercat','implicatie','castig','termen','buget','decide'];
+  const ETICHETE_APEL = { folosire:'Folosește', deranjeaza:'Îl deranjează', incercat:'A încercat', implicatie:'Cum îl încurcă', castig:'Ce ar câștiga', termen:'Termen', buget:'Buget', decide:'Hotărăște cu', oras:'Oraș' };
+
+  function openApelModal(id){
+    const c = clients.find(x => x.id === id);
+    if(!c) return;
+    const S = G.scenariu(c, numeExpeditor());
+    const pas = k => S.pasi.find(p => p.cheie === k);
+    const sect = (nr, titlu, corp) => '<div style="margin-top:16px;"><div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;"><span style="width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;">'+nr+'</span><span style="font-weight:600;font-size:14px;">'+esc(titlu)+'</span></div>'+corp+'</div>';
+    const intrebare = i => {
+      let input;
+      if(i.camp === 'dimensiuni'){
+        const v = f => (c[f] !== null && c[f] !== undefined) ? c[f] : '';
+        input = '<div style="display:flex;gap:6px;">' + [['ap_lungime','Lungime (m)','lungime'],['ap_latime','Lățime (m)','latime'],['ap_inaltime','Înălțime (m)','inaltime']].map(([idd, ph, f]) =>
+          '<input id="'+idd+'" type="number" step="0.01" min="0" placeholder="'+ph+'" value="'+esc(v(f))+'" style="flex:1;min-width:0;background:#fff;border:1px solid var(--line-strong);padding:8px 9px;border-radius:8px;font-size:12.5px;outline:none;">').join('') + '</div>';
+      } else {
+        const valoare = i.camp === 'oras' ? (c.adresa || '') : (c[i.camp] || '');
+        input = '<input id="ap_'+i.camp+'" value="'+esc(valoare)+'" placeholder="ce a răspuns" style="width:100%;background:#fff;border:1px solid var(--line-strong);padding:8px 10px;border-radius:8px;font-size:12.5px;outline:none;">';
+      }
+      return '<div style="margin:8px 0 12px;"><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.04em;">'+esc(i.grup)+'</div>' + citat(i.intreb) +
+        (i.ajutor ? '<div style="font-size:11.5px;color:var(--text3);margin:-2px 0 5px 15px;">'+esc(i.ajutor)+'</div>' : '') + input + '</div>';
+    };
+    const m = document.getElementById('modal');
+    m.innerHTML =
+      modalHeader('Apel cu ' + esc(c.nume)) +
+      '<div style="font-size:12px;color:var(--text3);">'+esc([c.tipSpatiu, c.suprafata, c.problema].filter(Boolean).join(' · ') || 'nu a completat spațiul')+' · venit '+esc(L.vechime(c.addedAt))+'</div>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">' + butoaneContact(c) + '</div>' +
+      sect(1, 'Deschiderea', citat(pas('deschidere').spui[0]) + tabel(['Dacă','Ce faci'], pas('deschidere').daca)) +
+      sect(2, 'Confirmi ce a scris', citat(pas('confirmare').spui[0]) + '<div style="font-size:12px;color:var(--text3);margin-left:15px;">Îl lași să povestească și nu-l întrerupi.</div>') +
+      sect(3, 'Întrebările', '<div style="font-size:12px;color:var(--text3);">Sari peste ce ți-a spus deja. Răspunsurile se salvează în fișă.</div>' + G.INTREBARI.map(intrebare).join('')) +
+      sect(4, 'Repeți și explici', '<div style="font-size:12.5px;color:var(--text2);">Întâi: „Deci, ca să văd dacă am înțeles: …”. Apoi:</div>' + citat(S.explicatie)) +
+      sect(5, 'Propui: ' + S.treapta.titlu, '<div style="font-size:12px;color:var(--text3);">De ce: '+esc(S.treapta.motiv)+'</div>' + citat(S.treapta.spui) + '<div style="font-size:12px;color:var(--text3);margin-left:15px;">După apel: '+esc(S.treapta.dupa)+'</div>' +
+        (S.rezerva ? '<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:12.5px;color:var(--text2);">Dacă nu vrea: '+esc(S.rezerva.titlu)+'</summary>' + citat(S.rezerva.spui) + '</details>' : '')) +
+      sect(6, 'Închizi', citat(pas('inchidere').spui[0])) +
+      '<details style="margin-top:16px;"><summary style="cursor:pointer;font-size:13px;font-weight:500;">Când clientul spune…</summary>' + tabel(['Clientul spune','Tu răspunzi'], S.obiectii.map(o => [o[0], o[1]])) + '</details>' +
+      '<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:500;">Ce nu spui niciodată</summary>' + tabel(['Nu spui','Spui în loc'], G.NICIODATA) + '</details>' +
+      '<details style="margin-top:8px;"><summary style="cursor:pointer;font-size:13px;font-weight:500;">'+esc(c.tipSpatiu || 'Alt tip de spațiu')+': ce vrea, ce mai întrebi</summary><div style="font-size:12.5px;line-height:1.5;margin-top:6px;">' +
+        [['Vrea', S.spatiu.vrea], ['Întrebi în plus', S.spatiu.intrebi], ['Propui', S.spatiu.propui], ['Atenție', S.spatiu.atentie]].filter(x => x[1]).map(([a,b]) => '<div><span style="color:var(--text3);">'+a+':</span> '+esc(b)+'</div>').join('') + '</div></details>' +
+      '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:10px;"></div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;flex-wrap:wrap;"><button id="cancelBtn" class="btn">închide</button><button id="apSave" class="btn-primary">salvează răspunsurile și mergi la „Gata”</button></div>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    m.scrollTop = 0;
+    legaRanduri(m);
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('cancelBtn').onclick = closeModal;
+    document.getElementById('apSave').onclick = () => salveazaApel(c);
+  }
+
+  async function salveazaApel(c){
+    const upd = { updatedAt: new Date().toISOString() };
+    const rezumat = [];
+    CAMPURI_APEL.forEach(f => { const v = val('ap_'+f); if(v !== (c[f] || '')) upd[f] = v; if(v) rezumat.push(ETICHETE_APEL[f] + ': ' + v); });
+    const oras = val('ap_oras');
+    if(oras && oras !== (c.adresa || '')) upd.adresa = oras;
+    if(oras) rezumat.unshift(ETICHETE_APEL.oras + ': ' + oras);
+    [['ap_lungime','lungime'],['ap_latime','latime'],['ap_inaltime','inaltime']].forEach(([idd, f]) => { const v = val(idd); if(v !== '') upd[f] = parseFloat(v); });
+    const cote = ['lungime','latime','inaltime'].map(f => upd[f] !== undefined ? upd[f] : c[f]).filter(x => x !== null && x !== undefined && x !== '');
+    if(cote.length === 3) rezumat.splice(oras ? 1 : 0, 0, 'Cote: ' + cote.map(x => Number(x).toLocaleString('ro-RO')).join(' × ') + ' m');
+    try{
+      await updateDoc(doc(db,'clients',c.id), upd);
+      const eAcum = E.etapaClient(c, deals);
+      openGataModal(c.id, eAcum === 'nou' ? 'contactat' : null, rezumat.join('. '));
+    }catch(err){ console.error(err); formError('Nu s-a salvat: verifică internetul și încearcă din nou.'); }
+  }
+
+  function ceAmAflat(c){
+    const r = [];
+    if(c.adresa) r.push(['Oraș', c.adresa]);
+    if(c.lungime && c.latime) r.push(['Cote', [c.lungime, c.latime, c.inaltime].filter(Boolean).map(x => Number(x).toLocaleString('ro-RO')).join(' × ') + ' m']);
+    CAMPURI_APEL.forEach(f => { if(c[f]) r.push([ETICHETE_APEL[f], c[f]]); });
+    if(!r.length) return '';
+    return '<div style="background:#faf9f6;border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:12px;"><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">CE AM AFLAT LA APEL</div>' +
+      r.map(([a,b]) => '<div style="font-size:12.5px;line-height:1.5;"><span style="color:var(--text3);">'+esc(a)+':</span> '+esc(b)+'</div>').join('') + '</div>';
   }
 
   /* ---------- CALENDAR ---------- */
@@ -1322,8 +1288,9 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
         '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#faf9f6;border:1px solid var(--line);border-radius:10px;padding:11px 14px;margin-bottom:12px;">' +
           '<div style="flex:1;min-width:180px;"><div style="font-size:11px;color:var(--text3);">PASUL URMĂTOR</div>' +
           '<div style="font-size:13.5px;font-weight:500;color:'+(p.la && new Date(p.la) < new Date() ? 'var(--red)' : 'var(--text)')+';">'+(p.la ? esc(p.ce||'pas')+' · '+esc(cand(p.la)) : (E.ACTIVE.includes(e) ? 'niciun pas programat' : 'client încheiat'))+'</div></div>' +
+          '<button class="btn" id="fisaApel" style="padding:8px 12px;"><i class="ti ti-headset" aria-hidden="true"></i> Ghid pentru apel</button>' +
           '<button class="btn-primary" id="fisaGata" style="padding:8px 14px;">Gata</button>' +
-        '</div>' : '') +
+        '</div>' + ceAmAflat(c) : '') +
       '<div id="quickActions" style="margin-bottom:14px;"></div>' +
       (id ?
         sectionTitle('Istoric') +
@@ -1348,6 +1315,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     if(id && isAdmin()) document.getElementById('deleteBtn').onclick = () => deleteClient(id);
     if(id){
       document.getElementById('fisaGata').onclick = () => openGataModal(id);
+      document.getElementById('fisaApel').onclick = () => openApelModal(id);
       m.querySelectorAll('[data-etapa-fisa]').forEach(b => b.addEventListener('click', () => openGataModal(id, b.dataset.etapaFisa)));
       document.getElementById('hAdd').onclick = adaugaInIstoric;
       document.getElementById('hText').addEventListener('keydown', ev => { if(ev.key === 'Enter') adaugaInIstoric(); });

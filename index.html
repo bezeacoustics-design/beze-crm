@@ -48,6 +48,15 @@
   .pagetitle{font-family:'Oswald',sans-serif;font-size:25px;font-weight:600;color:var(--text);letter-spacing:0.01em;}
   .pagesub{font-size:13px;color:var(--text3);margin-top:4px;}
   #modal{min-width:0;}
+  @media print{
+    body,html{background:#fff !important;height:auto !important;}
+    .topbar-bar,.sidebar,#connStatus,#modalWrap,.no-print,#loginScreen{display:none !important;}
+    #appShell,.app-row{display:block !important;height:auto !important;overflow:visible !important;}
+    .content-area{padding:0 !important;overflow:visible !important;background:#fff !important;}
+    .card{box-shadow:none !important;break-inside:avoid;page-break-inside:avoid;}
+    .ghidcard{break-inside:auto;page-break-inside:auto;}
+    @page{margin:14mm 12mm;}
+  }
   #modal select, #modal input, #modal textarea{max-width:100%;min-width:0;}
   #connStatus{position:fixed;bottom:14px;right:14px;font-size:11px;padding:6px 12px;border-radius:20px;background:#fff;border:1px solid var(--line-strong);color:var(--text3);z-index:100;}
 
