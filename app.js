@@ -3,7 +3,7 @@ import {
   getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import {
-  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import * as L from "./lead.js";
 
@@ -242,6 +242,24 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
       errEl.style.display = 'block';
     });
   }
+
+  document.getElementById('forgotBtn').addEventListener('click', async () => {
+    const email = document.getElementById('loginEmail').value.trim();
+    const errEl = document.getElementById('loginError');
+    const infoEl = document.getElementById('loginInfo');
+    errEl.style.display = 'none'; infoEl.style.display = 'none';
+    if(!email){ errEl.textContent = 'scrie mai întâi emailul contului, apoi apasă din nou „am uitat parola”'; errEl.style.display = 'block'; return; }
+    try{
+      auth.languageCode = 'ro';
+      await sendPasswordResetEmail(auth, email);
+      infoEl.textContent = 'Dacă există un cont cu acest email, ți-am trimis un link pentru parolă nouă la ' + email + '. Uită-te și în Spam. Linkul expiră în scurt timp.';
+      infoEl.style.display = 'block';
+    }catch(err){
+      console.error(err);
+      errEl.textContent = err && err.code === 'auth/invalid-email' ? 'emailul nu e scris corect' : 'nu am putut trimite mailul; încearcă din nou peste un minut';
+      errEl.style.display = 'block';
+    }
+  });
 
   document.getElementById('userMenu').addEventListener('click', () => {
     if(confirm('Te deconectezi din BEZE CRM?')) signOut(auth);
