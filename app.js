@@ -134,7 +134,10 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     const toate = () => Object.values(loadedFlags).every(Boolean);
     function gata_(cheie){
       loadedFlags[cheie] = true;
-      if(toate()){ setConnStatus('conectat · date live', true); renderPage(); }
+      if(toate()){
+        setConnStatus('conectat · date live', true); renderPage();
+        if(document.getElementById('listaNesunati') && document.getElementById('modalWrap').style.display === 'flex') openNesunatiModal();
+      }
     }
     onSnapshot(clientsCol, snap => {
       clients = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
@@ -296,8 +299,10 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   }
 
   /* ---------- AZI ---------- */
-  function tileAzi(numar, titlu, sub, culoare){
-    return '<div class="card" style="padding:16px 18px;flex:1;min-width:150px;">' +
+  function tileAzi(numar, titlu, sub, culoare, tinta){
+    const apasat = tinta ? ' data-tile="'+tinta+'" role="button" tabindex="0" title="Vezi lista"' : '';
+    return '<div class="card'+(tinta?' tile-apasat':'')+'"'+apasat+' style="padding:16px 18px;flex:1;min-width:150px;'+(tinta?'cursor:pointer;position:relative;':'')+'">' +
+      (tinta ? '<i class="ti ti-chevron-right" aria-hidden="true" style="position:absolute;top:14px;right:14px;font-size:16px;color:var(--text3);"></i>' : '') +
       '<div style="font-size:26px;font-weight:600;color:'+(culoare||'var(--text)')+';">'+numar+'</div>' +
       '<div style="font-size:13px;font-weight:500;margin-top:2px;">'+titlu+'</div>' +
       '<div style="font-size:12px;color:var(--text3);margin-top:2px;min-height:15px;">'+(sub||'')+'</div></div>';
@@ -313,21 +318,27 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
       (dreapta ? '<div style="font-size:12.5px;white-space:nowrap;">'+dreapta+'</div>' : '') +
       '<div style="display:flex;gap:6px;flex-wrap:wrap;">'+butoane+'</div></div>';
   }
-  function aziHtml(){
-    const A = E.listeAzi(clients, deals, new Date());
-    const k = A.cifre;
-    const azi = new Date().toLocaleDateString('ro-RO', {weekday:'long', day:'numeric', month:'long'});
-    const nesunati = A.nesunati.map(({c}) => randAzi(c,
+  function randNesunat(c){
+    return randAzi(c,
       '<div style="font-weight:500;">'+esc(c.nume)+'</div><div style="font-size:12px;color:var(--text2);">'+esc([spatiuScurt(c), c.problema].filter(Boolean).join(' · ') || c.email || '')+'</div>',
       '<span style="color:'+culoareVechime(c.addedAt)+';font-weight:500;">'+esc(L.vechime(c.addedAt))+'</span>',
-      '<button class="btn" data-apel="'+c.id+'" style="padding:6px 10px;font-size:12px;"><i class="ti ti-headset" aria-hidden="true"></i> Ghid</button>' + butoaneContact(c) + '<button class="btn-primary" data-gata="'+c.id+'" style="padding:6px 12px;font-size:12px;">Gata</button>')).join('');
-    const revenit = A.revenit.map(({c, vechi}) => randAzi(c,
+      '<button class="btn" data-apel="'+c.id+'" style="padding:6px 10px;font-size:12px;"><i class="ti ti-headset" aria-hidden="true"></i> Ghid</button>' + butoaneContact(c) + '<button class="btn-primary" data-gata="'+c.id+'" style="padding:6px 12px;font-size:12px;">Gata</button>');
+  }
+  function randRevenit(c, vechi){
+    return randAzi(c,
       '<div style="font-weight:500;">'+esc(c.nume)+' <span style="font-size:12px;color:var(--text3);font-weight:400;">a completat din nou formularul, '+esc(L.vechime(c.addedAt))+'</span></div>' +
       '<div style="font-size:12px;color:var(--text2);">acum: '+esc([spatiuScurt(c), c.problema].filter(Boolean).join(' · ') || '-')+'</div>' +
       '<div style="font-size:12px;color:var(--text3);">fișa veche: '+esc(vechi.nume)+', adăugat pe '+esc(fmtDate(vechi.addedAt))+' · '+esc(E.etapa(E.etapaClient(vechi, deals)).label)+(ultimaNota(vechi)?' · „'+esc(ultimaNota(vechi).slice(0,60))+'”':'')+'</div>',
       '',
       '<button class="btn-primary" data-uneste="'+c.id+'" data-vechi="'+vechi.id+'" style="padding:6px 12px;font-size:12px;">Pune în fișa veche</button>' +
-      '<button class="btn" data-separat="'+c.id+'" style="padding:6px 10px;font-size:12px;">Nu e același om</button>')).join('');
+      '<button class="btn" data-separat="'+c.id+'" style="padding:6px 10px;font-size:12px;">Nu e același om</button>');
+  }
+  function aziHtml(){
+    const A = E.listeAzi(clients, deals, new Date());
+    const k = A.cifre;
+    const azi = new Date().toLocaleDateString('ro-RO', {weekday:'long', day:'numeric', month:'long'});
+    const nesunati = A.nesunati.map(({c}) => randNesunat(c)).join('');
+    const revenit = A.revenit.map(({c, vechi}) => randRevenit(c, vechi)).join('');
     const pasi = A.pasi.map(({c, e, p, intarziat}) => randAzi(c,
       '<div style="font-weight:500;">'+esc(c.nume)+' '+etapaPill(e, true)+'</div><div style="font-size:12px;color:var(--text2);">'+esc(p.ce || 'pas fără descriere')+'</div>',
       '<span style="color:'+(intarziat?'var(--red)':'var(--text2)')+';font-weight:'+(intarziat?'600':'400')+';">'+(intarziat?'întârziat · ':'')+esc(cand(p.la))+'</span>',
@@ -345,7 +356,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
         '<div style="display:flex;gap:8px;"><button id="aziPaste" class="btn"><i class="ti ti-mail" aria-hidden="true"></i> client din mail</button><button id="aziAdd" class="btn-primary">+ client nou</button></div>' +
       '</div>' +
       '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">' +
-        tileAzi(k.nesunati, k.nesunati===1?'client nesunat':'clienți nesunați', k.celMaiVechi ? 'cel mai vechi: '+esc(L.vechime(k.celMaiVechi)) : '', k.nesunati ? culoareVechime(k.celMaiVechi || new Date().toISOString()) : '') +
+        tileAzi(k.nesunati, k.nesunati===1?'client nesunat':'clienți nesunați', k.celMaiVechi ? 'cel mai vechi: '+esc(L.vechime(k.celMaiVechi)) : '', k.nesunati ? culoareVechime(k.celMaiVechi || new Date().toISOString()) : '', 'nesunati') +
         tileAzi(k.pasi, k.pasi===1?'pas azi':'pași azi', k.intarziati ? k.intarziati+' întârziat'+(k.intarziati===1?'':'i') : '', k.intarziati ? 'var(--red)' : '') +
         tileAzi(k.oferte, k.oferte===1?'ofertă în așteptare':'oferte în așteptare', k.valoareOferte ? esc(fmtRon(k.valoareOferte)) : '') +
         tileAzi(k.studii, k.studii===1?'studiu săptămâna asta':'studii săptămâna asta', '') +
@@ -360,7 +371,31 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   function wireAzi(){
     document.getElementById('aziAdd').addEventListener('click', () => openClientModal(null));
     document.getElementById('aziPaste').addEventListener('click', openPasteModal);
+    const tile = document.querySelector('[data-tile="nesunati"]');
+    if(tile){
+      tile.addEventListener('click', openNesunatiModal);
+      tile.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openNesunatiModal(); } });
+    }
     legaRanduri(document.getElementById('page'));
+  }
+
+  // Lista din spatele cardului „clienți nesunați”: aceiași clienți pe care îi numără cardul (noii nesunați și cei care au revenit).
+  function openNesunatiModal(){
+    const A = E.listeAzi(clients, deals, new Date());
+    const n = A.nesunati.length + A.revenit.length;
+    const m = document.getElementById('modal');
+    m.innerHTML = modalHeader(n === 1 ? '1 client nesunat' : n + ' clienți nesunați') +
+      '<div id="listaNesunati">' +
+      (n ? '' : '<div style="font-size:13px;color:var(--text3);padding:6px 0;">Niciun client nou nesunat.</div>') +
+      (A.nesunati.length ? sectionTitle('Noi, de sunat') + A.nesunati.map(({c}) => randNesunat(c)).join('') : '') +
+      (A.revenit.length ? sectionTitle('Au completat din nou formularul') + A.revenit.map(({c, vechi}) => randRevenit(c, vechi)).join('') : '') +
+      '</div>' +
+      '<div style="display:flex;justify-content:flex-end;margin-top:16px;"><button id="cancelBtn" class="btn">închide</button></div>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    m.scrollTop = 0;
+    legaRanduri(m);
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('cancelBtn').onclick = closeModal;
   }
 
   /* ---------- CLIENTUL CARE REVINE ---------- */
