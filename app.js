@@ -1141,8 +1141,10 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     tr.appendChild(starTd);
     const spatiu = [c.tipSpatiu, c.suprafata].filter(Boolean).join(' · ');
     const nou = !c.contactat && !c.notInterested;
+    const dublura = gasesteDublura(c.telefon, c.email, c.id);
     tr.insertAdjacentHTML('beforeend',
-      '<td style="max-width:200px;"><div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nume)+'</div>' +
+      '<td style="max-width:200px;"><div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nume) +
+        (dublura ? ' <span class="pill" title="Mai e un client cu același telefon sau email: '+esc(dublura.nume)+'" style="background:var(--red-bg);color:var(--red);font-size:10.5px;padding:2px 7px;">dublură?</span>' : '') + '</div>' +
         (c.email ? '<div style="font-size:11.5px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.email)+'</div>' : '') + '</td>' +
       '<td class="mono" style="white-space:nowrap;">'+esc(c.telefon||'')+'</td>' +
       '<td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+esc(spatiu || c.nevoie || '')+'">'+(spatiu ? esc(spatiu) : '<span style="color:var(--text3);">'+esc(c.nevoie||'')+'</span>')+'</td>' +
