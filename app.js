@@ -720,8 +720,9 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     document.getElementById('ghidPrint').addEventListener('click', () => window.print());
   }
 
-  const CAMPURI_APEL = ['folosire','deranjeaza','incercat','implicatie','castig','termen','buget','decide'];
-  const ETICHETE_APEL = { folosire:'Folosește', deranjeaza:'Îl deranjează', incercat:'A încercat', implicatie:'Cum îl încurcă', castig:'Ce ar câștiga', termen:'Termen', buget:'Buget', decide:'Hotărăște cu', oras:'Oraș' };
+  const CAMPURI_APEL = ['folosire','sistem','deranjeaza','incercat','implicatie','castig','termen','buget','decide'];
+  const CAMPURI_CONSTRUCTIE = [['ap_pereti','Pereți','pereti'],['ap_tavan','Tavan','tavan'],['ap_podea','Pe jos','podea']];
+  const ETICHETE_APEL = { folosire:'Folosește', sistem:'Sistem audio', pereti:'Pereți', tavan:'Tavan', podea:'Pe jos', deranjeaza:'Îl deranjează', incercat:'A încercat', implicatie:'Cum îl încurcă', castig:'Ce ar câștiga', termen:'Termen', buget:'Buget', decide:'Hotărăște cu', oras:'Oraș' };
 
   function openApelModal(id){
     const c = clients.find(x => x.id === id);
@@ -735,6 +736,9 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
         const v = f => (c[f] !== null && c[f] !== undefined) ? c[f] : '';
         input = '<div style="display:flex;gap:6px;">' + [['ap_lungime','Lungime (m)','lungime'],['ap_latime','Lățime (m)','latime'],['ap_inaltime','Înălțime (m)','inaltime']].map(([idd, ph, f]) =>
           '<input id="'+idd+'" type="number" step="0.01" min="0" placeholder="'+ph+'" value="'+esc(v(f))+'" style="flex:1;min-width:0;background:#fff;border:1px solid var(--line-strong);padding:8px 9px;border-radius:8px;font-size:12.5px;outline:none;">').join('') + '</div>';
+      } else if(i.camp === 'constructie'){
+        input = '<div style="display:flex;gap:6px;flex-wrap:wrap;">' + CAMPURI_CONSTRUCTIE.map(([idd, ph, f]) =>
+          '<input id="'+idd+'" placeholder="'+ph+'" value="'+esc(c[f]||'')+'" style="flex:1;min-width:110px;background:#fff;border:1px solid var(--line-strong);padding:8px 9px;border-radius:8px;font-size:12.5px;outline:none;">').join('') + '</div>';
       } else {
         const valoare = i.camp === 'oras' ? (c.adresa || '') : (c[i.camp] || '');
         input = '<input id="ap_'+i.camp+'" value="'+esc(valoare)+'" placeholder="ce a răspuns" style="width:100%;background:#fff;border:1px solid var(--line-strong);padding:8px 10px;border-radius:8px;font-size:12.5px;outline:none;">';
@@ -776,8 +780,11 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     if(oras && oras !== (c.adresa || '')) upd.adresa = oras;
     if(oras) rezumat.unshift(ETICHETE_APEL.oras + ': ' + oras);
     [['ap_lungime','lungime'],['ap_latime','latime'],['ap_inaltime','inaltime']].forEach(([idd, f]) => { const v = val(idd); if(v !== '') upd[f] = parseFloat(v); });
+    const constructie = [];
+    CAMPURI_CONSTRUCTIE.forEach(([idd, , f]) => { const v = val(idd); if(v !== (c[f] || '')) upd[f] = v; if(v) constructie.push(ETICHETE_APEL[f] + ': ' + v); });
     const cote = ['lungime','latime','inaltime'].map(f => upd[f] !== undefined ? upd[f] : c[f]).filter(x => x !== null && x !== undefined && x !== '');
     if(cote.length === 3) rezumat.splice(oras ? 1 : 0, 0, 'Cote: ' + cote.map(x => Number(x).toLocaleString('ro-RO')).join(' × ') + ' m');
+    if(constructie.length) rezumat.splice((oras ? 1 : 0) + (cote.length === 3 ? 1 : 0), 0, constructie.join('. '));
     try{
       await updateDoc(doc(db,'clients',c.id), upd);
       const eAcum = E.etapaClient(c, deals);
@@ -789,6 +796,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     const r = [];
     if(c.adresa) r.push(['Oraș', c.adresa]);
     if(c.lungime && c.latime) r.push(['Cote', [c.lungime, c.latime, c.inaltime].filter(Boolean).map(x => Number(x).toLocaleString('ro-RO')).join(' × ') + ' m']);
+    ['pereti','tavan','podea'].forEach(f => { if(c[f]) r.push([ETICHETE_APEL[f], c[f]]); });
     CAMPURI_APEL.forEach(f => { if(c[f]) r.push([ETICHETE_APEL[f], c[f]]); });
     if(!r.length) return '';
     return '<div style="background:#faf9f6;border:1px solid var(--line);border-radius:10px;padding:10px 14px;margin-bottom:12px;"><div style="font-size:11px;color:var(--text3);margin-bottom:4px;">CE AM AFLAT LA APEL</div>' +

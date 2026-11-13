@@ -8,7 +8,7 @@
 // - prețuri și servicii: ~/beze-agent/canon/servicii.yaml și bezeacoustics.ro/products.json (13 Nov 2026)
 // - ce nu se spune: ~/beze-agent/canon/formulari.yaml și cunostinte/business/afirmatii-despre-produs.md
 
-export const VERSIUNE = '1, 13 noiembrie 2026';
+export const VERSIUNE = '1.1, 13 noiembrie 2026';
 
 export const PRINCIPII = [
   { titlu: 'Suni repede', text: 'Cererile de pe site se răcesc repede, iar cele mai multe firme răspund prea târziu. Clientul nou se sună primul.' },
@@ -106,6 +106,10 @@ export const INTREBARI = [
   { camp: 'folosire', grup: 'Situația', intreb: 'Pentru ce folosiți spațiul cel mai des?',
     ajutor: 'Studio: mix, voce, instrumente. Sală de repetiții: câți sunteți și ce instrumente. Restaurant sau birou: câți oameni sunt de obicei. Podcast: câte persoane vorbesc.' },
   { camp: 'dimensiuni', grup: 'Situația', intreb: 'Știți cam ce dimensiuni are? Lungimea, lățimea și cât e de înalt.', ajutor: 'Aproximativ e destul.' },
+  { camp: 'constructie', grup: 'Situația', intreb: 'Din ce sunt făcuți pereții și tavanul? Și ce aveți pe jos?',
+    ajutor: 'Pereți: cărămidă, BCA, beton, rigips. Tavan: beton, rigips, lemn. Pe jos: parchet, gresie, mochetă, covor. Ne trebuie pentru calcul și ca să știm cum se prind panourile.' },
+  { camp: 'sistem', grup: 'Situația', intreb: 'Ce boxe sau ce sistem audio aveți acolo? Aveți și subwoofer?',
+    ajutor: 'Studio: ce monitoare și unde sunt puse. Sală de repetiții sau home cinema: boxe, amplificatoare, subwoofer. Restaurant sau birou: boxele de ambient, dacă sunt. La bas contează și unde stau boxele.' },
   { camp: 'oras', grup: 'Situația', intreb: 'În ce oraș e spațiul?', ajutor: '' },
   { camp: 'deranjeaza', grup: 'Problema', intreb: 'Ce vă deranjează cel mai tare, concret? Când se aude?', ajutor: 'De exemplu: ecou când vorbiți, basul bubuie în colțuri, vocea înregistrată sună ca într-o cutie.' },
   { camp: 'incercat', grup: 'Problema', intreb: 'Ați încercat ceva până acum? Panouri, spumă, covoare, mobilier?', ajutor: 'Dacă are deja panouri: ce fel, cât de groase și unde sunt puse.' },
