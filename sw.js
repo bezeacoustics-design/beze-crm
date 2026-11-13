@@ -1,4 +1,4 @@
-const CACHE = 'beze-crm-v5';
+const CACHE = 'beze-crm-v6';
 const SHELL = ['./', './index.html', './app.js', './lead.js', './etape.js', './ghid.js', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

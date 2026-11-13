@@ -792,6 +792,22 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     }catch(err){ console.error(err); formError('Nu s-a salvat: verifică internetul și încearcă din nou.'); }
   }
 
+  // Ce a scris clientul în formular, sus în fișă: primul lucru de citit înainte de apel.
+  function ceACompletat(c){
+    const r = [];
+    const spatiu = [c.tipSpatiu, c.suprafata].filter(Boolean).join(' · ');
+    if(spatiu) r.push(['Spațiu', spatiu]);
+    if(c.problema) r.push(['Problema', c.problema]);
+    if(c.mesaj) r.push(['Mesajul lui', c.mesaj]);
+    if(c.nevoie) r.push(['Notițe', c.nevoie]);
+    const contact = [c.telefon, c.email].filter(Boolean).join(' · ');
+    if(contact) r.push(['Contact', contact]);
+    if(!r.length) return '';
+    return '<div style="background:#f3faf7;border:1px solid #cfe9df;border-radius:10px;padding:11px 14px;margin-bottom:12px;">' +
+      '<div style="font-size:11px;color:var(--accent-dark);font-weight:600;margin-bottom:5px;">'+(c.dinMail ? 'CE A COMPLETAT ÎN FORMULAR' : 'DESPRE CE E VORBA')+'</div>' +
+      r.map(([k,v]) => '<div style="font-size:13.5px;line-height:1.5;"><span style="color:var(--text3);">'+esc(k)+':</span> <span style="white-space:pre-wrap;'+(k==='Problema'?'font-weight:600;':'')+'">'+esc(v)+'</span></div>').join('') + '</div>';
+  }
+
   function ceAmAflat(c){
     const r = [];
     if(c.adresa) r.push(['Oraș', c.adresa]);
@@ -1289,6 +1305,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
       modalHeader(id ? esc(c.nume) : (prefill ? 'Client nou, din mail' : 'Client nou')) +
       (id ? '<div style="font-size:12px;color:var(--text3);margin-bottom:12px;">venit '+esc(L.vechime(c.addedAt))+' ('+esc(fmtDateTime(c.addedAt))+')' + (c.sursa?' · '+esc(c.sursa):'') + (c.reclama?' · '+esc(c.reclama):'') + (E.inLucru(c)?'':' · <b>arhivă</b>') + '</div>'
           : (prefill ? '<div style="font-size:12px;color:var(--accent-dark);background:var(--accent-bg);padding:8px 10px;border-radius:8px;margin-bottom:12px;">Am completat fișa din mail. Verifică datele, apoi „salvează”.</div>' : '')) +
+      (id ? ceACompletat(c) : '') +
       (id ?
         '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">' +
           E.ETAPE.map(x => '<button type="button" class="btn" data-etapa-fisa="'+x.key+'" style="padding:5px 10px;font-size:12px;'+(x.key===e?'background:'+x.fundal+';color:'+x.culoare+';border-color:'+x.culoare+';font-weight:600;':'')+'">'+esc(x.label)+'</button>').join('') +
