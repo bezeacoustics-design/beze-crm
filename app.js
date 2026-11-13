@@ -1,0 +1,1631 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {
+  getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {
+  getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import * as L from "./lead.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDU_QIv1zVKAbhlNDnWeg6ZaDTGvVaHuCs",
+  authDomain: "beze-intern.firebaseapp.com",
+  projectId: "beze-intern",
+  storageBucket: "beze-intern.firebasestorage.app",
+  messagingSenderId: "691595185314",
+  appId: "1:691595185314:web:afa816d669f9c4f1cd5bfb",
+  measurementId: "G-RGGX2KBJ18"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const auth = getAuth(fbApp);
+const clientsCol = collection(db, 'clients');
+const dealsCol = collection(db, 'deals');
+const activityCol = collection(db, 'activity');
+const eventsCol = collection(db, 'events');
+
+const ADMIN_EMAIL = 'beiathedj@gmail.com';
+function isAdmin(){ return !!(auth.currentUser && auth.currentUser.email === ADMIN_EMAIL); }
+// Numele cu care semnează fiecare om din echipă în mesajele de WhatsApp.
+const NUME_ECHIPA = { 'beiathedj@gmail.com': 'Marius' };
+function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; return NUME_ECHIPA[e] || ''; }
+
+(function(){
+  const NAV = [
+
+    {key:'dashboard', label:'Acasă', icon:'ti-home'},
+    {key:'clienti', label:'Clienți', icon:'ti-users'},
+    {key:'oferte', label:'Oferte', icon:'ti-file-text'},
+    {key:'calendar', label:'Calendar', icon:'ti-calendar'},
+    {key:'sarcini', label:'Sarcini', icon:'ti-checklist'},
+    {key:'activitate', label:'Activitate', icon:'ti-history'},
+    {key:'ghid', label:'Ghid', icon:'ti-headset'}
+  ];
+  const SURSE = L.SURSE;
+  const STAGES = [
+    {key:'lead_nou', label:'Lead nou', color:'var(--blue)', bg:'var(--blue-bg)'},
+    {key:'oferta_trimisa', label:'Ofertă trimisă', color:'var(--warm-text)', bg:'var(--warm-bg)'},
+    {key:'negociere', label:'Negociere', color:'var(--pink)', bg:'var(--pink-bg)'},
+    {key:'client', label:'Client (câștigat)', color:'var(--green)', bg:'var(--green-bg)'},
+    {key:'pierdut', label:'Pierdut', color:'var(--red)', bg:'var(--red-bg)'}
+  ];
+
+  let currentView = 'dashboard';
+  let clients = [], deals = [], activity = [], events = [];
+  let loadedFlags = {clients:false, deals:false, activity:false, events:false};
+  let editingClientId = null, editingDealId = null, editingEventId = null;
+  let dashRange = 'month';
+  let charts = {};
+  let resizingKey = null;
+  let todayCardOffset = 0;
+  let dashResizeObserver = null;
+  const now0 = new Date();
+  let calYear = now0.getFullYear(), calMonth = now0.getMonth();
+  let calSelectedDate = null;
+
+  function esc(s){ return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  function fmtDate(iso){ if(!iso) return ''; const d=new Date(iso); return d.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'}); }
+  function fmtDateTime(iso){ if(!iso) return ''; const d=new Date(iso); return d.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit'}) + ' · ' + d.toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}); }
+  function fmtRon(n){ return (Number(n)||0).toLocaleString('ro-RO') + ' RON'; }
+  function monthKey(iso){ const d=new Date(iso); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+  function monthLabel(key){ const [y,m]=key.split('-'); const names=['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','noi','dec']; return names[parseInt(m,10)-1]+' '+y.slice(2); }
+  function isThisMonth(iso){ if(!iso) return false; const d=new Date(iso), n=new Date(); return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth(); }
+  function isOnDay(iso, offsetDays){
+    if(!iso) return false;
+    const d = new Date(iso);
+    const n = new Date();
+    n.setDate(n.getDate() + (offsetDays||0));
+    return d.getFullYear()===n.getFullYear() && d.getMonth()===n.getMonth() && d.getDate()===n.getDate();
+  }
+
+  function digitsOnly(s){ return String(s||'').replace(/\D/g,''); }
+  function formatRoPhoneDigits(digits){
+    const d = String(digits||'').slice(0,9);
+    const parts = [];
+    if(d.length>0) parts.push(d.slice(0,3));
+    if(d.length>3) parts.push(d.slice(3,6));
+    if(d.length>6) parts.push(d.slice(6,9));
+    return parts.join(' ');
+  }
+  function extractPhoneDigitsForEdit(telefon){
+    let d = digitsOnly(telefon);
+    if(d.startsWith('40') && d.length>9) d = d.slice(2);
+    return d.slice(0,9);
+  }
+  function toDatetimeLocal(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return '';
+    const pad = n => String(n).padStart(2,'0');
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'T'+pad(d.getHours())+':'+pad(d.getMinutes());
+  }
+
+  function toast(text){
+    let el = document.getElementById('toast');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'toast';
+      el.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#15171a;color:#fff;font-size:13px;padding:10px 16px;border-radius:9px;z-index:200;box-shadow:0 6px 20px rgba(0,0,0,0.25);max-width:90vw;';
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.style.display = 'block';
+    clearTimeout(el._t);
+    el._t = setTimeout(() => { el.style.display = 'none'; }, 3500);
+  }
+
+  async function copiaza(text, mesaj){
+    try{ await navigator.clipboard.writeText(text); toast(mesaj || 'Copiat.'); }
+    catch(e){ console.error(e); toast('Nu am putut copia textul. Încearcă din nou.'); }
+  }
+
+  /* ---------- INTERVALUL DE PE ACASĂ ---------- */
+  function rangeBounds(){
+    const now = new Date();
+    if(dashRange==='month'){
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { start:s, end:now, prevStart:new Date(now.getFullYear(), now.getMonth()-1, 1), prevEnd:s, label:'Luna aceasta', prevLabel:'luna trecută' };
+    }
+    if(dashRange==='30d'){
+      const s = new Date(now.getTime() - 30*864e5);
+      return { start:s, end:now, prevStart:new Date(now.getTime() - 60*864e5), prevEnd:s, label:'Ultimele 30 de zile', prevLabel:'cele 30 de zile dinainte' };
+    }
+    return { start:null, end:now, label:'Tot timpul' };
+  }
+  function inRange(iso, b){
+    if(!iso) return false;
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return false;
+    if(b.start && d < b.start) return false;
+    return d <= b.end;
+  }
+  function countBetween(list, field, from, to){
+    return list.filter(x => { const d = new Date(x[field]); return !isNaN(d.getTime()) && d >= from && d < to; }).length;
+  }
+
+  async function logActivity(text){
+    try{ await addDoc(activityCol, { ts: new Date().toISOString(), text }); }catch(e){ console.error(e); }
+  }
+
+  function setConnStatus(text, ok){
+    const el = document.getElementById('connStatus');
+    el.textContent = text;
+    el.style.color = ok ? 'var(--accent-dark)' : 'var(--text3)';
+    el.style.borderColor = ok ? 'var(--accent)' : 'var(--line-strong)';
+  }
+
+  function maybeInitialRender(){
+    if(loadedFlags.clients && loadedFlags.deals && loadedFlags.activity && loadedFlags.events){
+      setConnStatus('conectat · date live', true);
+      renderPage();
+    }
+  }
+
+  let listenersStarted = false;
+  function startListeners(){
+    if(listenersStarted) return;
+    listenersStarted = true;
+
+    function checkAllLoaded(){ return loadedFlags.clients && loadedFlags.deals && loadedFlags.activity && loadedFlags.events; }
+
+    onSnapshot(clientsCol, snap => {
+      clients = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+      loadedFlags.clients = true;
+      if(checkAllLoaded()){ setConnStatus('conectat · date live', true); renderPage(); }
+    }, err => { console.error(err); setConnStatus('eroare conexiune', false); });
+
+    onSnapshot(dealsCol, snap => {
+      deals = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+      loadedFlags.deals = true;
+      if(checkAllLoaded()){ setConnStatus('conectat · date live', true); renderPage(); }
+    }, err => console.error(err));
+
+    onSnapshot(activityCol, snap => {
+      activity = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+      loadedFlags.activity = true;
+      if(checkAllLoaded()){ setConnStatus('conectat · date live', true); renderPage(); }
+    }, err => console.error(err));
+
+    onSnapshot(eventsCol, snap => {
+      events = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+      loadedFlags.events = true;
+      if(checkAllLoaded()){ setConnStatus('conectat · date live', true); renderPage(); }
+    }, err => console.error(err));
+  }
+
+  renderNav();
+
+  document.addEventListener('mousedown', (e) => {
+    const card = e.target.closest('.dashcard');
+    if(!card) return;
+    const rect = card.getBoundingClientRect();
+    if((rect.right - e.clientX) < 24 && (rect.bottom - e.clientY) < 24){
+      resizingKey = card.dataset.key;
+    }
+  });
+  document.addEventListener('mouseup', () => {
+    setTimeout(() => { resizingKey = null; }, 80);
+  });
+
+  /* ---------- AUTH ---------- */
+  function showLogin(){
+    document.getElementById('loginScreen').style.display = 'flex';
+    document.getElementById('appShell').style.display = 'none';
+    document.getElementById('connStatus').style.display = 'none';
+  }
+  function showApp(user){
+    document.getElementById('loginScreen').style.display = 'none';
+    document.getElementById('appShell').style.display = 'flex';
+    document.getElementById('connStatus').style.display = 'block';
+    const label = document.getElementById('userEmailLabel');
+    if(label) label.textContent = user.email || 'Beze Acoustics';
+    startListeners();
+  }
+
+  onAuthStateChanged(auth, (user) => {
+    if(user) showApp(user); else showLogin();
+  });
+
+  document.getElementById('loginBtn').addEventListener('click', doLogin);
+  document.getElementById('loginPassword').addEventListener('keydown', (e) => { if(e.key==='Enter') doLogin(); });
+  document.getElementById('loginEmail').addEventListener('keydown', (e) => { if(e.key==='Enter') doLogin(); });
+
+  function doLogin(){
+    const email = document.getElementById('loginEmail').value.trim();
+    const pass = document.getElementById('loginPassword').value;
+    const errEl = document.getElementById('loginError');
+    errEl.style.display = 'none';
+    if(!email || !pass){ errEl.textContent = 'completează email și parolă'; errEl.style.display = 'block'; return; }
+    signInWithEmailAndPassword(auth, email, pass).catch(err => {
+      errEl.textContent = 'email sau parolă incorecte';
+      errEl.style.display = 'block';
+    });
+  }
+
+  document.getElementById('userMenu').addEventListener('click', () => {
+    if(confirm('Te deconectezi din BEZE CRM?')) signOut(auth);
+  });
+
+  function renderNav(){
+    const nav = document.getElementById('nav');
+    nav.innerHTML = '';
+    NAV.forEach(n => {
+      const el = document.createElement('div');
+      el.className = 'navitem' + (currentView===n.key?' active':'');
+      el.innerHTML = '<i class="ti '+n.icon+'" style="font-size:15px;" aria-hidden="true"></i><span>'+n.label+'</span>';
+      el.addEventListener('click', () => { currentView=n.key; renderNav(); renderPage(); });
+      nav.appendChild(el);
+    });
+  }
+
+  function destroyCharts(){ Object.values(charts).forEach(c=>{try{c.destroy();}catch(e){}}); charts={}; }
+
+  function renderPage(){
+    destroyCharts();
+    const page = document.getElementById('page');
+    if(currentView==='dashboard'){ page.innerHTML = dashboardHtml(); wireDashboard(); }
+    else if(currentView==='clienti'){ page.innerHTML = clientsHtml(); wireClients(); }
+    else if(currentView==='oferte'){ page.innerHTML = dealsHtml(); wireDeals(); }
+    else if(currentView==='calendar'){ page.innerHTML = calendarHtml(); wireCalendar(); }
+    else if(currentView==='sarcini'){ page.innerHTML = tasksHtml(); wireTasks(); }
+    else if(currentView==='activitate'){ page.innerHTML = activityHtml(); }
+    else { page.innerHTML = ghidHtml(); wireGhid(); }
+  }
+
+  /* ---------- DASHBOARD ---------- */
+  function hcard(inner, extraStyle){
+    return '<div style="background:#fff;border:1px solid var(--line-strong);border-radius:10px;padding:20px 22px;'+(extraStyle||'')+'">'+inner+'</div>';
+  }
+  function cardTitle(text){
+    return '<div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:500;color:#0d5c56;margin-bottom:10px;padding-right:44px;">'+text+'<i class="ti ti-info-circle" style="font-size:14px;color:var(--text3);" aria-hidden="true"></i></div>';
+  }
+  function minipill(text){
+    return '<span style="background:#f2f1ea;color:var(--text2);font-size:11.5px;font-weight:500;padding:4px 10px;border-radius:6px;">'+text+'</span>';
+  }
+  function emptyState(msg){
+    return '<div style="text-align:center;padding:30px 10px;color:var(--text3);font-size:12.5px;">'+
+      '<i class="ti ti-chart-arrows" style="font-size:26px;display:block;margin:0 auto 10px;color:var(--line-strong);" aria-hidden="true"></i>'+
+      msg + '</div>';
+  }
+
+  const DASH_ORDER_KEY = 'beze_dash_layout';
+  const DEFAULT_DASH_ORDER = ['clientiNoi','deSunatAzi','clientiTimp','surse','oferteTimp','oferteEtapa','sarcini','activitate'];
+  const DASH_TITLES = {
+    clientiNoi:'Clienți noi', deSunatAzi:'De sunat azi', clientiTimp:'Clienți adăugați în timp',
+    surse:'Sursa clienților', oferteTimp:'Oferte create în timp',
+    oferteEtapa:'Oferte după etapă', sarcini:'Sarcini restante', activitate:'Activitate recentă'
+  };
+  const DEFAULT_DASH_SIZES = {
+    clientiNoi:{w:320,h:230}, deSunatAzi:{w:340,h:260}, clientiTimp:{w:460,h:300}, surse:{w:460,h:300},
+    oferteTimp:{w:460,h:280}, oferteEtapa:{w:460,h:280}, sarcini:{w:400,h:260}, activitate:{w:400,h:260}
+  };
+  const CARD_CHART_MAP = { clientiTimp:'overTime', surse:'sources', oferteTimp:'dealsTime', oferteEtapa:'dealStage' };
+
+  function loadDashLayout(){
+    try{
+      const raw = localStorage.getItem(DASH_ORDER_KEY);
+      if(raw){
+        const parsed = JSON.parse(raw);
+        const order = (parsed.order||[]).filter(k => DASH_TITLES[k]);
+        DEFAULT_DASH_ORDER.forEach(k => { if(!order.includes(k)) order.push(k); });
+        const sizes = Object.assign({}, DEFAULT_DASH_SIZES, parsed.sizes||{});
+        return { order, hidden: Array.isArray(parsed.hidden) ? parsed.hidden.filter(k=>DASH_TITLES[k]) : [], sizes };
+      }
+    }catch(e){}
+    return { order: DEFAULT_DASH_ORDER.slice(), hidden: [], sizes: Object.assign({}, DEFAULT_DASH_SIZES) };
+  }
+  let dashLayout = loadDashLayout();
+  function saveDashLayout(){ try{ localStorage.setItem(DASH_ORDER_KEY, JSON.stringify(dashLayout)); }catch(e){} }
+
+  function dashCardInner(key){
+    const b = rangeBounds();
+    const dealsInRange = deals.filter(d => inRange(d.createdAt, b));
+    const noDeals = dealsInRange.length === 0;
+    if(key==='clientiNoi'){
+      const n = clients.filter(c => inRange(c.addedAt, b)).length;
+      const prev = b.prevStart ? countBetween(clients, 'addedAt', b.prevStart, b.prevEnd) : null;
+      const neSunati = clients.filter(c => !c.contactat && !c.notInterested).length;
+      return cardTitle('Clienți noi') +
+        '<div style="display:flex;gap:6px;margin-bottom:18px;">' + minipill(b.label) + '</div>' +
+        '<div style="text-align:center;padding:10px 0 4px;max-width:260px;margin:0 auto;">' +
+          '<div style="font-size:11px;color:var(--text3);letter-spacing:0.05em;">(NUMĂR) CLIENȚI</div>' +
+          '<div style="font-size:40px;font-weight:600;color:#0d5c56;margin-top:6px;">' + n + '</div>' +
+          (prev!==null ? '<div style="font-size:12px;color:var(--text3);margin-top:4px;">' + b.prevLabel + ': ' + prev + '</div>' : '') +
+          '<div style="font-size:12px;color:var(--warm-text);margin-top:8px;">' + neSunati + (neSunati===1 ? ' client încă nesunat' : ' clienți încă nesunați') + '</div>' +
+        '</div>';
+    }
+    if(key==='deSunatAzi'){
+      const dayDate = new Date(); dayDate.setDate(dayDate.getDate() + todayCardOffset);
+      const dayLabel = todayCardOffset===0 ? 'De sunat azi' : 'De sunat mâine';
+      return '<div style="display:flex;flex-direction:column;height:100%;">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-right:44px;">' +
+          '<div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:500;color:#0d5c56;">'+dayLabel+'<i class="ti ti-info-circle" style="font-size:14px;color:var(--text3);" aria-hidden="true"></i></div>' +
+          '<i id="todayCardToggle" class="ti ti-chevron-right" style="font-size:18px;color:var(--accent-dark);cursor:pointer;" title="'+(todayCardOffset===0?'vezi mâine':'vezi azi')+'" aria-hidden="true"></i>' +
+        '</div>' +
+        minipill(dayDate.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'})) +
+        '<div id="todayCallsList" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow-y:auto;margin-top:12px;"></div>' +
+      '</div>';
+    }
+    if(key==='clientiTimp') return '<div style="display:flex;flex-direction:column;height:100%;">' +
+      cardTitle('Clienți adăugați în timp (cumulat)') + minipill('Anul acesta, total la sfârșitul fiecărei luni') +
+      '<div style="flex:1;min-height:60px;margin-top:14px;"><canvas id="chartOverTime"></canvas></div>' +
+    '</div>';
+    if(key==='surse') return '<div style="display:flex;flex-direction:column;height:100%;">' +
+      cardTitle('Sursa clienților') + minipill(b.label) +
+      '<div style="display:flex;align-items:center;gap:6px;margin:14px 0 6px;font-size:12px;color:var(--text2);"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;"></span>(Număr) Clienți</div>' +
+      '<div style="flex:1;min-height:60px;"><canvas id="chartSources"></canvas></div>' +
+    '</div>';
+    if(key==='oferteTimp') return '<div style="display:flex;flex-direction:column;height:100%;">' +
+      cardTitle('Oferte create în timp') + minipill('Toate, pe luni') +
+      (deals.length===0 ? emptyState('Fără date momentan. După ce adaugi oferte, le vei vedea aici.')
+               : '<div style="flex:1;min-height:60px;margin-top:14px;"><canvas id="chartDealsTime"></canvas></div>') +
+    '</div>';
+    if(key==='oferteEtapa') return cardTitle('Oferte după etapă') +
+      minipill(b.label + ', după data creării') +
+      (noDeals ? emptyState('Nicio ofertă creată în acest interval.')
+               : '<div style="display:flex;gap:20px;align-items:center;margin-top:14px;">' +
+                   '<div style="width:140px;height:140px;flex-shrink:0;"><canvas id="chartDealStage"></canvas></div>' +
+                   '<div style="font-size:12px;">' + dealStageLegend(dealsInRange) +
+                     '<div style="margin-top:10px;color:var(--text3);">valoare câștigată</div><div style="font-size:16px;font-weight:500;color:var(--accent-dark);">' + fmtRon(wonDealsValue(dealsInRange)) + '</div>' +
+                     '<div style="margin-top:8px;color:var(--text3);">valoare activă (în lucru)</div><div style="font-size:16px;font-weight:500;color:var(--text);">' + fmtRon(activeDealsValue(dealsInRange)) + '</div>' +
+                   '</div>' +
+                 '</div>');
+    if(key==='sarcini') return '<div style="display:flex;flex-direction:column;height:100%;">' + cardTitle('Sarcini restante') + '<div id="miniTasks" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow-y:auto;"></div></div>';
+    if(key==='activitate') return cardTitle('Activitate recentă') + '<div id="miniActivity" style="display:flex;flex-direction:column;gap:8px;"></div>';
+    return '';
+  }
+
+  function dashCardWrapper(key){
+    const size = dashLayout.sizes[key] || DEFAULT_DASH_SIZES[key] || {w:400,h:260};
+    return '<div class="dashcard" data-key="'+key+'" style="position:relative;width:'+size.w+'px;height:'+size.h+'px;min-width:240px;min-height:150px;max-width:100%;resize:both;overflow:hidden;transition:opacity 0.15s;">' +
+      '<div style="position:absolute;top:18px;right:20px;display:flex;gap:10px;z-index:2;">' +
+        '<i class="ti ti-grip-vertical" draggable="true" style="cursor:grab;color:var(--line-strong);font-size:16px;" title="trage pentru a reordona" aria-hidden="true"></i>' +
+        '<i class="ti ti-x" data-hide="'+key+'" style="cursor:pointer;color:var(--text3);font-size:16px;" title="ascunde acest card" aria-hidden="true"></i>' +
+      '</div>' +
+      hcard(dashCardInner(key), 'height:100%;box-sizing:border-box;overflow:auto;') +
+    '</div>';
+  }
+
+  function dashboardHtml(){
+    const visible = dashLayout.order.filter(k => !dashLayout.hidden.includes(k));
+    const hidden = dashLayout.order.filter(k => dashLayout.hidden.includes(k));
+    return (
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">' +
+        '<div style="display:flex;align-items:center;gap:9px;">' +
+          '<i class="ti ti-star" style="font-size:17px;color:var(--text3);" aria-hidden="true"></i>' +
+          '<span class="pagetitle" style="font-size:21px;">Privire generală CRM</span>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button id="dashPasteBtn" class="btn"><i class="ti ti-mail" aria-hidden="true"></i> client din mail</button>' +
+          '<button id="dashAddBtn" class="btn-primary">+ Client nou</button>' +
+        '</div>' +
+      '</div>' +
+
+      '<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--line);">' +
+        '<span style="font-size:12.5px;color:var(--text2);">Interval:</span>' +
+        '<select id="rangeSel" class="filt" style="border-radius:16px;">' +
+          '<option value="month"' + (dashRange==='month'?' selected':'') + '>Luna aceasta</option>' +
+          '<option value="30d"' + (dashRange==='30d'?' selected':'') + '>Ultimele 30 zile</option>' +
+          '<option value="all"' + (dashRange==='all'?' selected':'') + '>Tot timpul</option>' +
+        '</select>' +
+        '<span style="font-size:11.5px;color:var(--text3);display:flex;align-items:center;gap:5px;"><i class="ti ti-arrows-move" aria-hidden="true"></i>trage mânerul (☰) ca să reordonezi, colțul din dreapta-jos ca să redimensionezi</span>' +
+        '<button id="resetLayoutBtn" class="btn" style="font-size:11.5px;padding:5px 10px;">resetează aspectul</button>' +
+        '<i class="ti ti-refresh" id="refreshBtn" style="margin-left:auto;font-size:16px;color:var(--text3);cursor:pointer;" aria-hidden="true" title="Reîmprospătează"></i>' +
+      '</div>' +
+
+      '<div id="dashCards" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">' +
+        visible.map(dashCardWrapper).join('') +
+      '</div>' +
+
+      (hidden.length
+        ? '<div style="margin-top:18px;font-size:12px;color:var(--text3);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
+            '<span>carduri ascunse:</span>' +
+            hidden.map(k => '<button class="btn" data-show="'+k+'" style="font-size:11px;padding:5px 10px;">+ '+DASH_TITLES[k]+'</button>').join('') +
+          '</div>'
+        : '')
+    );
+  }
+
+  function activeDealsValue(list){
+    return (list||deals).filter(d => d.etapa!=='client' && d.etapa!=='pierdut').reduce((s,d)=>s+(Number(d.valoare)||0),0);
+  }
+  function wonDealsValue(list){
+    return (list||deals).filter(d => d.etapa==='client').reduce((s,d)=>s+(Number(d.valoare)||0),0);
+  }
+
+  function sourceCounts(){
+    const b = rangeBounds();
+    const bySrc = {};
+    clients.filter(c => inRange(c.addedAt, b)).forEach(c => { const s=c.sursa||'Fără sursă'; bySrc[s]=(bySrc[s]||0)+1; });
+    return bySrc;
+  }
+
+  const stageColors = ['#3576c9','#d98e4c','#c94f8f','#3f8f3f','#c0453f'];
+  function dealStageLegend(list){
+    return STAGES.map((s,i) => {
+      const ct = (list||deals).filter(d=>d.etapa===s.key).length;
+      if(!ct) return '';
+      return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><span style="width:8px;height:8px;border-radius:50%;background:'+stageColors[i]+';display:inline-block;"></span><span style="color:var(--text2);">'+s.label+': '+ct+'</span></div>';
+    }).join('');
+  }
+
+  function wireDashCardDrag(){
+    const container = document.getElementById('dashCards');
+    if(!container) return;
+    let draggedKey = null;
+    container.querySelectorAll('.dashcard').forEach(card => {
+      const grip = card.querySelector('.ti-grip-vertical');
+      if(grip){
+        grip.addEventListener('dragstart', (e) => { draggedKey = card.dataset.key; card.style.opacity = '0.4'; e.dataTransfer.effectAllowed = 'move'; });
+        grip.addEventListener('dragend', () => { card.style.opacity = '1'; });
+      }
+      card.addEventListener('dragover', (e) => { e.preventDefault(); card.style.outline = '2px solid var(--accent)'; });
+      card.addEventListener('dragleave', () => { card.style.outline = ''; });
+      card.addEventListener('drop', (e) => {
+        e.preventDefault();
+        card.style.outline = '';
+        const targetKey = card.dataset.key;
+        if(!draggedKey || draggedKey===targetKey) return;
+        const order = dashLayout.order.filter(k => k!==draggedKey);
+        const idx = order.indexOf(targetKey);
+        order.splice(idx, 0, draggedKey);
+        dashLayout.order = order;
+        saveDashLayout();
+        renderPage();
+      });
+      const hideBtn = card.querySelector('[data-hide]');
+      if(hideBtn) hideBtn.addEventListener('click', () => {
+        dashLayout.hidden = Array.from(new Set([...dashLayout.hidden, hideBtn.dataset.hide]));
+        saveDashLayout();
+        renderPage();
+      });
+    });
+    document.querySelectorAll('[data-show]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        dashLayout.hidden = dashLayout.hidden.filter(k => k!==btn.dataset.show);
+        saveDashLayout();
+        renderPage();
+      });
+    });
+    const resetBtn = document.getElementById('resetLayoutBtn');
+    if(resetBtn) resetBtn.addEventListener('click', () => {
+      dashLayout = { order: DEFAULT_DASH_ORDER.slice(), hidden: [], sizes: Object.assign({}, DEFAULT_DASH_SIZES) };
+      saveDashLayout();
+      renderPage();
+    });
+  }
+
+  function wireDashCardResize(){
+    const container = document.getElementById('dashCards');
+    if(!container || typeof ResizeObserver === 'undefined') return;
+    if(dashResizeObserver) dashResizeObserver.disconnect();
+    dashResizeObserver = new ResizeObserver(entries => {
+      let changed = false;
+      entries.forEach(entry => {
+        const card = entry.target;
+        const key = card.dataset.key;
+        if(!key) return;
+        const w = Math.round(entry.contentRect.width);
+        const h = Math.round(entry.contentRect.height);
+        if(key === resizingKey){
+          dashLayout.sizes[key] = { w, h };
+          changed = true;
+        }
+        const chartKey = CARD_CHART_MAP[key];
+        if(chartKey && charts[chartKey]) charts[chartKey].resize();
+      });
+      if(changed) saveDashLayout();
+    });
+    container.querySelectorAll('.dashcard').forEach(card => dashResizeObserver.observe(card));
+  }
+
+  function wireDashboard(){
+    document.getElementById('dashAddBtn').addEventListener('click', () => openClientModal(null));
+    document.getElementById('dashPasteBtn').addEventListener('click', openPasteModal);
+    document.getElementById('rangeSel').addEventListener('change', e => { dashRange = e.target.value; renderPage(); });
+    document.getElementById('refreshBtn').addEventListener('click', () => renderPage());
+    wireDashCardDrag();
+    wireDashCardResize();
+    const dashedGrid = { color:'#eceae1', borderDash:[3,3] };
+
+    try{
+      if(typeof Chart === 'undefined') throw new Error('Chart.js nu s-a încărcat');
+
+      if(document.getElementById('chartOverTime')){
+        const now = new Date();
+        const year = now.getFullYear();
+        let running = clients.filter(c => new Date(c.addedAt).getFullYear() < year).length;
+        const cumLabels = [], cumData = [];
+        for(let m=0; m<=now.getMonth(); m++){
+          const countThisMonth = clients.filter(c => { const d=new Date(c.addedAt); return d.getFullYear()===year && d.getMonth()===m; }).length;
+          running += countThisMonth;
+          cumLabels.push(monthLabel(year+'-'+String(m+1).padStart(2,'0')));
+          cumData.push(running);
+        }
+        charts.overTime = new Chart(document.getElementById('chartOverTime'), {
+          type:'line',
+          data:{ labels: cumLabels, datasets:[{ data: cumData, borderColor:'#1f8f72', backgroundColor:'rgba(31,143,114,0.1)', fill:true, tension:0.2, pointRadius:3, pointBackgroundColor:'#1f8f72' }] },
+          options:{ plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, ticks:{precision:0, font:{size:11}}, grid:dashedGrid }, x:{ grid:{display:false}, ticks:{font:{size:11}} } }, responsive:true, maintainAspectRatio:false }
+        });
+      }
+
+      if(document.getElementById('chartSources')){
+        const bySrc = sourceCounts();
+        const sk = Object.keys(bySrc);
+        charts.sources = new Chart(document.getElementById('chartSources'), {
+          type:'bar',
+          data:{ labels: sk, datasets:[{ label:'Clienți', data: sk.map(k=>bySrc[k]), backgroundColor:'#1f8f72', borderRadius:0, maxBarThickness:60 }] },
+          options:{ plugins:{legend:{display:false}}, scales:{
+            y:{ beginAtZero:true, ticks:{precision:0, font:{size:11}}, grid:dashedGrid, title:{display:true, text:'(Număr) Clienți', font:{size:11}} },
+            x:{ grid:{display:false}, ticks:{font:{size:11}}, title:{display:true, text:'Sursă', font:{size:11}} }
+          }, responsive:true, maintainAspectRatio:false }
+        });
+      }
+
+      if(deals.length){
+        if(document.getElementById('chartDealsTime')){
+          const byDealMonth = {};
+          deals.forEach(d => { const k=monthKey(d.createdAt); byDealMonth[k]=(byDealMonth[k]||0)+1; });
+          const dmk = Object.keys(byDealMonth).sort();
+          charts.dealsTime = new Chart(document.getElementById('chartDealsTime'), {
+            type:'line',
+            data:{ labels: dmk.map(monthLabel), datasets:[{ data: dmk.map(k=>byDealMonth[k]), borderColor:'#3576c9', backgroundColor:'rgba(53,118,201,0.1)', fill:true, tension:0.2, pointRadius:3 }] },
+            options:{ plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true,ticks:{precision:0,font:{size:11}}, grid:dashedGrid}, x:{grid:{display:false}, ticks:{font:{size:11}}} }, responsive:true, maintainAspectRatio:false }
+          });
+        }
+        if(document.getElementById('chartDealStage')){
+          const dr = deals.filter(d => inRange(d.createdAt, rangeBounds()));
+          const stageCounts = STAGES.map(s => dr.filter(d=>d.etapa===s.key).length);
+          charts.dealStage = new Chart(document.getElementById('chartDealStage'), {
+            type:'doughnut',
+            data:{ labels: STAGES.map(s=>s.label), datasets:[{ data: stageCounts, backgroundColor: stageColors, borderWidth:0 }] },
+            options:{ plugins:{legend:{display:false}}, responsive:true, maintainAspectRatio:false, cutout:'65%' }
+          });
+        }
+      }
+    }catch(err){
+      console.error('Eroare la desenarea graficelor:', err);
+    }
+
+    const todayList = document.getElementById('todayCallsList');
+    if(todayList){
+      const todays = clients.filter(c => !c.notInterested && isOnDay(c.nextCallAt, todayCardOffset)).sort((a,b)=>(a.nextCallAt||'').localeCompare(b.nextCallAt||''));
+      if(todays.length===0){ todayList.innerHTML = '<div style="font-size:12px;color:var(--text3);">niciun apel programat '+(todayCardOffset===0?'azi':'mâine')+'</div>'; }
+      todays.forEach(c => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;align-items:center;gap:10px;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);';
+        const timeStr = new Date(c.nextCallAt).toLocaleTimeString('ro-RO', {hour:'2-digit', minute:'2-digit'});
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.style.cssText = 'width:16px;height:16px;accent-color:var(--accent);flex-shrink:0;cursor:pointer;';
+        cb.title = 'am luat legătura — marchează ca rezolvat';
+        cb.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await updateDoc(doc(db,'clients',c.id), { contactat:true, nextCallAt:'', nextCallReason:'', updatedAt:new Date().toISOString() });
+          logActivity('Marcat ca și contactat: '+c.nume);
+        });
+
+        const info = document.createElement('div');
+        info.style.cssText = 'flex:1;min-width:0;cursor:pointer;';
+        info.innerHTML =
+          '<div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nume)+'</div>' +
+          (c.nextCallReason ? '<div style="color:var(--text3);font-size:11px;">'+esc(c.nextCallReason)+'</div>' : '');
+        info.addEventListener('click', () => openClientModal(c.id));
+
+        const timeEl = document.createElement('div');
+        timeEl.style.cssText = 'color:var(--warm-text);font-weight:500;white-space:nowrap;';
+        timeEl.textContent = timeStr;
+
+        row.appendChild(cb);
+        row.appendChild(info);
+        row.appendChild(timeEl);
+        todayList.appendChild(row);
+      });
+    }
+    const todayToggle = document.getElementById('todayCardToggle');
+    if(todayToggle) todayToggle.addEventListener('click', () => { todayCardOffset = todayCardOffset===0 ? 1 : 0; renderPage(); });
+
+    const miniTasks = document.getElementById('miniTasks');
+    if(miniTasks){
+      const pendingTasks = getTasks();
+      if(pendingTasks.length===0){ miniTasks.innerHTML = '<div style="font-size:12px;color:var(--text3);">nimic restant</div>'; }
+      pendingTasks.forEach(t => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);';
+        row.innerHTML = '<span>'+esc(t.label)+'</span><span style="color:var(--text3);">'+esc(t.sub)+'</span>';
+        miniTasks.appendChild(row);
+      });
+    }
+
+    const miniAct = document.getElementById('miniActivity');
+    if(miniAct){
+      const recentAct = activity.slice().sort((a,b)=>(b.ts||'').localeCompare(a.ts||'')).slice(0,4);
+      if(recentAct.length===0){ miniAct.innerHTML = '<div style="font-size:12px;color:var(--text3);">nicio activitate încă</div>'; }
+      recentAct.forEach(a => {
+        const row = document.createElement('div');
+        row.style.cssText = 'font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--text2);';
+        row.innerHTML = esc(a.text) + '<div style="font-size:11px;color:var(--text3);margin-top:1px;">'+fmtDateTime(a.ts)+'</div>';
+        miniAct.appendChild(row);
+      });
+    }
+  }
+
+  function monthFilterOptions(){
+    const names = ['ianuarie','februarie','martie','aprilie','mai','iunie','iulie','august','septembrie','octombrie','noiembrie','decembrie'];
+    const keys = Array.from(new Set(clients.map(c=>monthKey(c.addedAt)))).sort().reverse();
+    return keys.map(k => {
+      const [y,m] = k.split('-');
+      const label = names[parseInt(m,10)-1] + ' ' + y;
+      return '<option value="'+k+'">'+label.charAt(0).toUpperCase()+label.slice(1)+'</option>';
+    }).join('');
+  }
+
+  /* ---------- GHID CONSULTANȚĂ ---------- */
+  const INTAKE_ORDER = ['Tip spațiu + scop', 'Dimensiuni', 'Materiale construcție / mobilier existent', 'Problema specifică', 'Poze', 'Buget'];
+
+  const CALL_STEPS = [
+    'Deschidere + context — te prezinți, reamintești de ce suni, ceri permisiunea ("aveți 5 minute acum?")',
+    'Întrebări de diagnostic, nu vânzare încă',
+    'Clarifică izolație fonică vs. tratament acustic — panourile NU opresc sunetul să treacă prin pereți, doar controlează ecoul din interior',
+    'Reflectă problema înapoi + explică principiul pe scurt — arată că ai ascultat',
+    'Propune un pas concret — vizită/măsurătoare, plan orientativ, sau recomandare de kit',
+    'Gestionează obiecțiile fără presiune — află ce anume îi reține',
+    'Închide cu un pas clar — dată/oră exactă de follow-up, nu "ne mai auzim"'
+  ];
+
+  const SPACE_GUIDES = {
+    studio: {
+      label: 'Studio', icon: 'ti-microphone-2', color: '#3576c9',
+      obiectiv: 'Monitorizare neutră — ce auzi la mixaj trebuie să fie exact ce e în fișier, nu colorat de cameră.',
+      rt60: 'Scurt, echilibrat pe toate frecvențele. Cameră "uscată", nu "live".',
+      ordine: ['Reflexii timpurii (tavan + pereți laterali)', 'Perete spate', 'Perete frontal', 'Colțuri', 'Reflexii târzii', 'Colțuri de tavan'],
+      reguli: [
+        'Simetrie critică — identică stânga/dreapta față de poziția de mix',
+        'Boxe: evită "zona periculoasă" SBIR — fie lipite de perete, fie la minim 90cm distanță (nu la mijloc)',
+        'Mai gros = mai jos în frecvență; spațiul de aer (air gap) dintre panou și perete crește mult performanța',
+        'Bass trapping agresiv, în toate colțurile, stivuit podea-tavan dacă spațiul permite',
+        'Difuzie minimă/deloc, se preferă absorbție',
+        '30-40% acoperire e suficientă pentru un rezultat bun — nu trebuie 100%'
+      ],
+      atentionari: [
+        'Panouri sub 10cm grosime prind doar high-mid, nu și sub ~120Hz — setează așteptări clare la bugete mici',
+        'Izolație fonică (vecini, bleed) e o discuție separată de tratamentul acustic',
+        'Nu menționa REW la primul apel — doar dacă clientul e serios/audiophile, ca pas 2'
+      ]
+    },
+    hifi: {
+      label: 'Hi-Fi', icon: 'ti-disc', color: '#1f8f72',
+      obiectiv: 'Experiență muzicală plăcută, naturală, cu imagine stereo precisă.',
+      rt60: 'Echilibrat, cu puțină "viață" păstrată — nu la fel de uscat ca un studio.',
+      ordine: ['Poziționare boxe + poziție de ascultare', 'Reflexii timpurii (laterale + tavan)', 'Colțuri (bass traps)', 'Perete spate'],
+      reguli: [
+        'Boxe în triunghi echilateral cu poziția de ascultare, toe-in ușor spre ascultător',
+        'Poziția scaunului la ~38% din lungimea camerei — evită centrul exact (acolo sunt cele mai puternice anulări de bas)',
+        'Simetrie: distanțe egale de la scaun la fiecare boxă / perete lateral',
+        '"Mirror trick" pentru reflexii: oglindă pe peretele lateral, te miști până vezi boxa — acolo pui panoul',
+        'Bass traps în toate cele 4 colțuri, stivuite podea-tavan dacă se poate',
+        'Difuzie valorizată, mai ales pe peretele spate'
+      ],
+      atentionari: [
+        'Foam nu ține jos în frecvență — rockwool/fibră densă e necesară pentru bas',
+        'Tratamentul complet e ideal, dar reflexii timpurii + colțuri + perete spate dau cel mai vizibil rezultat pentru bani'
+      ]
+    },
+    hometheater: {
+      label: 'Home Theater', icon: 'ti-device-tv', color: '#c94f8f',
+      obiectiv: 'Claritate dialog + impact cinematic, pentru mai multe scaune — nu un singur ascultător.',
+      rt60: 'Scurt, similar unui studio.',
+      ordine: ['Colțuri (fundația controlului de bas)', 'Pereți laterali + tavan (zona critică de dialog)', 'Perete spate (difuzie)', 'Perete frontal (bass trapping)'],
+      reguli: [
+        'Se tratează ZONE, nu puncte — sunt mai multe scaune și, în sisteme Atmos, 11+ boxe',
+        'Colțuri: cele mai mari/groase device-uri posibile',
+        'Pereți laterali + tavan între boxe și scaune = zona critică pentru claritatea dialogului',
+        'Perete spate: difuzie, nu absorbție totală — altfel camera "se simte mică"',
+        'Perete frontal (spatele ecranului): bass trapping, ideal cu tehnologie range-limited ca să nu omoare tot înaltul',
+        'Scaunele NU lipite de peretele din spate — acolo presiunea de bas e maximă'
+      ],
+      atentionari: [
+        'Subwoofere multiple + poziționare inteligentă ajută, dar nu înlocuiesc bass traps fizice',
+        'Nu confunda cu izolație fonică — tratamentul nu oprește vecinii/familia să audă filmul'
+      ]
+    },
+    comercial: {
+      label: 'Comercial', icon: 'ti-building-store', color: '#d98e4c',
+      obiectiv: 'Claritate vorbire, reducere oboseală — argument de business (productivitate), NU "sunet perfect".',
+      rt60: 'Redus, dar nu "mort" — țintă un nivel confortabil de conversație.',
+      ordine: ['Tavan (cea mai eficientă suprafață)', 'Acoperire uniformă pe toți pereții', 'Zone sensibile (săli de conferință, birouri) — tratament premium'],
+      reguli: [
+        'Tavanul e cel mai eficient loc de tratat — suprafață mare, aproape de toată lumea',
+        'Acoperire UNIFORMĂ pe toată camera — esențial de explicat clientului',
+        'Zone sensibile (săli de conferință, birouri de conducere) — tratament premium, motivat de confidențialitate + profesionalism',
+        'Panouri freestanding / gobo-uri utile între zone de lucru deschise'
+      ],
+      atentionari: [
+        'Un singur perete tratat lasă flutter echo pe restul — argument bun împotriva "vreau doar câteva panouri"',
+        'Vinde productivitate și claritate, nu acuratețe muzicală',
+        'Cost per m² contează mult — suprafețele sunt de obicei mari'
+      ]
+    },
+    podcast: {
+      label: 'Podcast', icon: 'ti-microphone', color: '#c0453f',
+      obiectiv: 'Claritate vocală, semnal "uscat"/necolorat — orice "viață" se adaugă în editare, nu se captează în cameră.',
+      rt60: 'Cel mai scurt dintre toate tipurile de spații.',
+      ordine: ['Tavan, direct deasupra microfonului', 'Colțuri (bass, chiar și pentru voce)', 'Pereți laterali, aproape de mic'],
+      reguli: [
+        'NU camera cea mai mică posibilă (tip dulap) — creează rezonanțe "boxy" greu de reparat în post',
+        'Frecvența fundamentală a vocii: ~100Hz bărbați, ~200Hz femei — lungimea de undă la 100Hz e 3.43m, se comportă ca un bas',
+        'Panouri minim ~10cm grosime, nu doar high-mid subțire de 5cm',
+        'Colțurile contează și aici, nu doar reflexiile de pe pereți',
+        'Mai mulți invitați: microfoanele orientate să nu se "audă" reciproc (zona surdă a unui cardioid e spatele lui)'
+      ],
+      atentionari: [
+        'NU recomanda difuzie — la 15-30cm de mic, reflexiile difuzate ajung aproape la fel de repede ca sunetul direct, deci colorează în loc să "aerisească"',
+        'Izolație fonică foarte importantă — zgomotul de fundal strică orice înregistrare',
+        'Cameră prea mică, tip dulap = greșeală comună de evitat la alegerea spațiului'
+      ]
+    }
+  };
+
+  let selectedSpace = null;
+
+  function ghidHtml(){
+    return (
+      '<div style="margin-bottom:18px;"><div class="pagetitle">Ghid consultanță</div><div class="pagesub">reper rapid pentru discuția cu clientul — alege tipul de spațiu</div></div>' +
+
+      '<div class="card" style="margin-bottom:16px;">' +
+        '<div class="cardhead"><i class="ti ti-list-numbers" aria-hidden="true"></i>Ordinea de întrebări pentru orice client</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+          INTAKE_ORDER.map((q,i) => '<span class="pill" style="background:var(--accent-bg);color:var(--accent-dark);">'+(i+1)+'. '+q+'</span>').join('') +
+        '</div>' +
+      '</div>' +
+
+      '<div class="card" style="margin-bottom:20px;">' +
+        '<div class="cardhead"><i class="ti ti-phone-call" aria-hidden="true"></i>Structura apelului</div>' +
+        '<div style="display:flex;flex-direction:column;gap:6px;">' +
+          CALL_STEPS.map((s,i) => '<div style="font-size:13px;color:var(--text2);"><span style="color:var(--accent-dark);font-weight:600;">'+(i+1)+'.</span> '+esc(s)+'</div>').join('') +
+        '</div>' +
+      '</div>' +
+
+      '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;" id="spaceButtons"></div>' +
+
+      '<div id="spaceContent"></div>'
+    );
+  }
+
+  function spaceButtonEl(key, g){
+    const btn = document.createElement('button');
+    const active = selectedSpace === key;
+    btn.style.cssText = 'flex:1;min-width:110px;display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px 8px;border-radius:12px;cursor:pointer;border:2px solid '+(active?g.color:'var(--line-strong)')+';background:'+(active?g.color+'14':'#fff')+';transition:all 0.15s;';
+    btn.innerHTML = '<i class="ti '+g.icon+'" style="font-size:24px;color:'+g.color+';" aria-hidden="true"></i><span style="font-size:12.5px;font-weight:500;color:var(--text);">'+g.label+'</span>';
+    btn.addEventListener('click', () => { selectedSpace = key; renderPage(); });
+    return btn;
+  }
+
+  function spaceContentHtml(key){
+    const g = SPACE_GUIDES[key];
+    return (
+      '<div class="card" style="border-top:4px solid '+g.color+';">' +
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">' +
+          '<i class="ti '+g.icon+'" style="font-size:22px;color:'+g.color+';" aria-hidden="true"></i>' +
+          '<span style="font-size:19px;font-weight:600;font-family:\'Oswald\',sans-serif;">'+g.label+'</span>' +
+        '</div>' +
+
+        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:4px;">Obiectiv / ce vinzi de fapt</div>' +
+        '<div style="font-size:14px;color:var(--text);">'+esc(g.obiectiv)+'</div></div>' +
+
+        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:4px;">RT60 țintă</div>' +
+        '<div style="font-size:14px;color:var(--text);">'+esc(g.rt60)+'</div></div>' +
+
+        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:8px;">Ordinea de tratament</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:6px;">' + g.ordine.map((o,i)=>'<span class="pill" style="background:'+g.color+'14;color:'+g.color+';">'+(i+1)+'. '+esc(o)+'</span>').join(' → ') + '</div></div>' +
+
+        '<div style="margin-bottom:16px;"><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:8px;">Reguli cheie</div>' +
+        '<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">' + g.reguli.map(r=>'<li style="font-size:13.5px;color:var(--text2);">'+esc(r)+'</li>').join('') + '</ul></div>' +
+
+        '<div><div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--warm-text);margin-bottom:8px;">⚠ Atenționări</div>' +
+        '<ul style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px;">' + g.atentionari.map(a=>'<li style="font-size:13.5px;color:var(--text);">'+esc(a)+'</li>').join('') + '</ul></div>' +
+      '</div>'
+    );
+  }
+
+  function wireGhid(){
+    const btnRow = document.getElementById('spaceButtons');
+    Object.keys(SPACE_GUIDES).forEach(key => btnRow.appendChild(spaceButtonEl(key, SPACE_GUIDES[key])));
+    const contentEl = document.getElementById('spaceContent');
+    contentEl.innerHTML = selectedSpace
+      ? spaceContentHtml(selectedSpace)
+      : '<div class="card" style="text-align:center;color:var(--text3);padding:40px 20px;">alege un tip de spațiu mai sus</div>';
+  }
+
+  /* ---------- CALENDAR ---------- */
+  const RO_MONTHS = ['Ianuarie','Februarie','Martie','Aprilie','Mai','Iunie','Iulie','August','Septembrie','Octombrie','Noiembrie','Decembrie'];
+  const RO_DAYS = ['Lun','Mar','Mie','Joi','Vin','Sâm','Dum'];
+
+  function dateStr(y,m,d){ return y+'-'+String(m+1).padStart(2,'0')+'-'+String(d).padStart(2,'0'); }
+  function todayStr(){ const n=new Date(); return dateStr(n.getFullYear(), n.getMonth(), n.getDate()); }
+
+  function itemsForDay(ds){
+    const calls = clients.filter(c => !c.notInterested && c.nextCallAt && c.nextCallAt.slice(0,10)===ds)
+      .map(c => ({ type:'call', time: new Date(c.nextCallAt).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}), label:'Sună pe '+c.nume, sub:c.nextCallReason||'', refId:c.id }));
+    const followUps = deals.filter(d => d.followUp===ds)
+      .map(d => ({ type:'deal', time:'', label:'Follow-up ofertă — '+d.clientNume, sub:'', refId:d.id }));
+    const custom = events.filter(e => e.date===ds)
+      .map(e => ({ type:'event', time:e.time||'', label:e.title, sub:e.notes||'', refId:e.id }));
+    return [...calls, ...followUps, ...custom].sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  }
+
+  function calendarHtml(){
+    const firstOfMonth = new Date(calYear, calMonth, 1);
+    const startOffset = (firstOfMonth.getDay()+6)%7; // Monday=0
+    const daysInMonth = new Date(calYear, calMonth+1, 0).getDate();
+    const tStr = todayStr();
+
+    let cells = '';
+    for(let i=0;i<startOffset;i++) cells += '<div></div>';
+    for(let d=1; d<=daysInMonth; d++){
+      const ds = dateStr(calYear, calMonth, d);
+      const items = itemsForDay(ds);
+      const isToday = ds===tStr;
+      const preview = items.slice(0,2).map(it => {
+        const color = it.type==='call' ? 'var(--warm-text)' : it.type==='deal' ? 'var(--blue)' : 'var(--accent-dark)';
+        return '<div style="font-size:10.5px;color:'+color+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:2px;">'+(it.time?it.time+' ':'')+esc(it.label)+'</div>';
+      }).join('');
+      const more = items.length>2 ? '<div style="font-size:10px;color:var(--text3);margin-top:2px;">+'+(items.length-2)+' mai multe</div>' : '';
+      cells += '<div class="calday" data-date="'+ds+'" style="min-height:88px;border:1px solid var(--line);border-radius:8px;padding:6px 7px;cursor:pointer;background:'+(isToday?'var(--accent-bg)':'#fff')+';">' +
+        '<div style="font-size:12px;font-weight:'+(isToday?'700':'500')+';color:'+(isToday?'var(--accent-dark)':'var(--text)')+';">'+d+'</div>' +
+        preview + more +
+      '</div>';
+    }
+
+    return (
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">' +
+        '<div><div class="pagetitle">Calendar</div><div class="pagesub">apeluri programate + întâlniri</div></div>' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          '<i class="ti ti-chevron-left" id="calPrev" style="font-size:20px;cursor:pointer;color:var(--text2);" aria-hidden="true"></i>' +
+          '<span style="font-size:15px;font-weight:500;min-width:150px;text-align:center;">'+RO_MONTHS[calMonth]+' '+calYear+'</span>' +
+          '<i class="ti ti-chevron-right" id="calNext" style="font-size:20px;cursor:pointer;color:var(--text2);" aria-hidden="true"></i>' +
+          '<button id="calTodayBtn" class="btn" style="margin-left:6px;">azi</button>' +
+          '<button id="calAddBtn" class="btn-primary">+ eveniment</button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:8px;">' +
+        RO_DAYS.map(d=>'<div style="font-size:11px;text-transform:uppercase;letter-spacing:0.03em;color:var(--text3);text-align:center;">'+d+'</div>').join('') +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;">' + cells + '</div>'
+    );
+  }
+
+  function wireCalendar(){
+    document.getElementById('calPrev').addEventListener('click', () => { calMonth--; if(calMonth<0){calMonth=11;calYear--;} renderPage(); });
+    document.getElementById('calNext').addEventListener('click', () => { calMonth++; if(calMonth>11){calMonth=0;calYear++;} renderPage(); });
+    document.getElementById('calTodayBtn').addEventListener('click', () => { const n=new Date(); calYear=n.getFullYear(); calMonth=n.getMonth(); renderPage(); });
+    document.getElementById('calAddBtn').addEventListener('click', () => openEventModal(null, todayStr()));
+    document.querySelectorAll('.calday').forEach(cell => {
+      cell.addEventListener('click', () => openDayModal(cell.dataset.date));
+    });
+  }
+
+  function openDayModal(ds){
+    calSelectedDate = ds;
+    const items = itemsForDay(ds);
+    const d = new Date(ds+'T00:00:00');
+    const m = document.getElementById('modal');
+    m.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+        '<div style="font-size:15px;font-weight:500;">'+d.toLocaleDateString('ro-RO',{weekday:'long',day:'numeric',month:'long'})+'</div>' +
+        '<button id="closeModal" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">&times;</button>' +
+      '</div>' +
+      (items.length===0
+        ? '<div style="text-align:center;padding:30px 10px;color:var(--text3);font-size:13px;">nimic programat în ziua asta</div>'
+        : '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;">' +
+            items.map(it => {
+              const color = it.type==='call' ? 'var(--warm-text)' : it.type==='deal' ? 'var(--blue)' : 'var(--accent-dark)';
+              const icon = it.type==='call' ? 'ti-phone-outgoing' : it.type==='deal' ? 'ti-file-text' : 'ti-calendar-event';
+              return '<div class="dayitem" data-type="'+it.type+'" data-ref="'+it.refId+'" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;'+(it.type==='event'?'cursor:pointer;':'')+'">' +
+                '<i class="ti '+icon+'" style="font-size:16px;color:'+color+';flex-shrink:0;" aria-hidden="true"></i>' +
+                '<div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:500;">'+(it.time?it.time+' — ':'')+esc(it.label)+'</div>' +
+                (it.sub?'<div style="font-size:11.5px;color:var(--text3);">'+esc(it.sub)+'</div>':'') + '</div>' +
+              '</div>';
+            }).join('') +
+          '</div>'
+      ) +
+      '<button id="dayAddBtn" class="btn" style="width:100%;">+ adaugă eveniment în această zi</button>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('dayAddBtn').onclick = () => openEventModal(null, ds);
+    m.querySelectorAll('.dayitem[data-type="event"]').forEach(el => {
+      el.addEventListener('click', () => openEventModal(el.dataset.ref, ds));
+    });
+    m.querySelectorAll('.dayitem[data-type="call"]').forEach(el => {
+      el.addEventListener('click', () => openClientModal(el.dataset.ref));
+    });
+  }
+
+  function openEventModal(id, defaultDate){
+    editingEventId = id || null;
+    const ev = id ? events.find(x=>x.id===id) : null;
+    const m = document.getElementById('modal');
+    m.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+        '<div style="font-size:15px;font-weight:500;">'+(ev?'Editează eveniment':'Eveniment nou')+'</div>' +
+        '<button id="closeModal" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">&times;</button>' +
+      '</div>' +
+      field('Titlu','f_ev_title', ev?ev.title:'') +
+      field('Data','f_ev_date', ev?ev.date:defaultDate, 'date') +
+      field('Oră (opțional)','f_ev_time', ev?ev.time:'', 'time') +
+      textareaField('Notițe','f_ev_notes', ev?ev.notes:'') +
+      '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:6px;"></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">' +
+        (ev?'<button id="deleteBtn" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;">șterge</button>':'<span></span>') +
+        '<div style="display:flex;gap:8px;"><button id="cancelBtn" class="btn">anulează</button><button id="saveBtn" class="btn-primary">salvează</button></div>' +
+      '</div>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('cancelBtn').onclick = closeModal;
+    document.getElementById('saveBtn').onclick = saveEvent;
+    if(ev) document.getElementById('deleteBtn').onclick = () => deleteEvent(ev.id);
+  }
+
+  async function saveEvent(){
+    const title = document.getElementById('f_ev_title').value.trim();
+    const date = document.getElementById('f_ev_date').value;
+    const errEl = document.getElementById('formError');
+    if(!title || !date){ errEl.textContent='completează titlul și data'; errEl.style.display='block'; return; }
+    errEl.style.display='none';
+    const data = {
+      title,
+      date,
+      time: document.getElementById('f_ev_time').value,
+      notes: document.getElementById('f_ev_notes').value.trim(),
+      updatedAt: new Date().toISOString()
+    };
+    if(editingEventId){
+      await updateDoc(doc(db,'events',editingEventId), data);
+      logActivity('Eveniment actualizat: '+title);
+    } else {
+      data.createdAt = new Date().toISOString();
+      await addDoc(eventsCol, data);
+      logActivity('Eveniment nou: '+title);
+    }
+    if(calSelectedDate) openDayModal(calSelectedDate); else closeModal();
+  }
+
+  async function deleteEvent(id){
+    if(!confirm('Ștergi acest eveniment?')) return;
+    const ev = events.find(x=>x.id===id);
+    await deleteDoc(doc(db,'events',id));
+    if(ev) logActivity('Eveniment șters: '+ev.title);
+    if(calSelectedDate) openDayModal(calSelectedDate); else closeModal();
+  }
+
+  /* ---------- CLIENTI ---------- */
+  function clientsHtml(){
+    return (
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;gap:14px;">' +
+        '<div><div class="pagetitle">Clienți</div><div class="pagesub">'+clients.length+' înregistrați</div></div>' +
+        '<div style="display:flex;gap:8px;">' +
+          '<button id="exportBtn" class="btn"><i class="ti ti-download" aria-hidden="true"></i> exportă backup</button>' +
+          '<button id="pasteBtn" class="btn"><i class="ti ti-mail" aria-hidden="true"></i> client din mail</button>' +
+          '<button id="addBtn" class="btn-primary">+ client nou</button>' +
+        '</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">' +
+        '<input id="search" type="text" placeholder="caută nume, telefon sau email..." style="background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 13px;border-radius:9px;font-size:13px;width:230px;outline:none;">' +
+        '<select id="filtLuna" class="filt"><option value="">toate lunile</option>' + monthFilterOptions() + '</select>' +
+        '<select id="filtSursa" class="filt"><option value="">toate sursele</option>' + SURSE.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('') + '</select>' +
+        '<select id="filtSpatiu" class="filt"><option value="">toate spațiile</option>' + L.TIP_SPATIU.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('') + '</select>' +
+        '<select id="filtProblema" class="filt"><option value="">toate problemele</option>' + L.PROBLEMA.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('') + '</select>' +
+        '<select id="filtStatus" class="filt"><option value="">toate statusurile</option><option value="da">contactat</option><option value="nu">de contactat</option><option value="reapelare">cu reapelare programată</option><option value="nu_raspuns">nu a răspuns</option></select>' +
+        '<select id="filtImportant" class="filt"><option value="">toți clienții</option><option value="da">doar importanți ⭐</option><option value="prioritate">importanți ⭐ + de reapelat 📞</option><option value="nu_interesat">neinteresați ✕</option></select>' +
+      '</div>' +
+      '<div class="card" style="padding:0;overflow:hidden;">' +
+        '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">' +
+          '<thead><tr><th style="padding-left:20px;width:32px;"></th><th>Nume</th><th>Telefon</th><th>Spațiu</th><th>Problemă</th><th>Discuție tel.</th><th>Status</th><th style="padding-right:24px;">Venit</th></tr></thead>' +
+          '<tbody id="tbody"></tbody>' +
+        '</table></div>' +
+        '<div id="empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text3);"><div style="font-size:15px;">niciun client încă</div><div style="font-size:13px;margin-top:6px;">adaugă primul contact din formularele de reclame</div></div>' +
+      '</div>'
+    );
+  }
+
+  function wireClients(){
+    document.getElementById('addBtn').addEventListener('click', () => openClientModal(null));
+    document.getElementById('pasteBtn').addEventListener('click', openPasteModal);
+    document.getElementById('exportBtn').addEventListener('click', exportBackup);
+    document.getElementById('search').addEventListener('input', renderClientsTable);
+    ['filtLuna','filtSursa','filtSpatiu','filtProblema','filtStatus','filtImportant'].forEach(id => document.getElementById(id).addEventListener('change', renderClientsTable));
+    renderClientsTable();
+  }
+
+  function exportBackup(){
+    const payload = { exportedAt: new Date().toISOString(), clients, deals, activity, events };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href = url;
+    a.download = 'beze-crm-backup-'+stamp+'.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function renderClientsTable(){
+    const q = (document.getElementById('search').value||'').trim().toLowerCase();
+    const fl = document.getElementById('filtLuna').value;
+    const fs = document.getElementById('filtSursa').value;
+    const fst = document.getElementById('filtStatus').value;
+    const fimp = document.getElementById('filtImportant').value;
+    const fsp = document.getElementById('filtSpatiu').value;
+    const fpr = document.getElementById('filtProblema').value;
+    const filtered = clients.filter(c => {
+      if(q){
+        const qn = L.norm(q);
+        const qDigits = digitsOnly(q);
+        const nameMatch = L.norm(c.nume).includes(qn);
+        const emailMatch = L.norm(c.email).includes(qn);
+        const phoneMatch = (c.telefon||'').toLowerCase().includes(q);
+        const digitMatch = qDigits.length>2 && digitsOnly(c.telefon).includes(qDigits);
+        if(!nameMatch && !emailMatch && !phoneMatch && !digitMatch) return false;
+      }
+      if(fl && monthKey(c.addedAt)!==fl) return false;
+      if(fs && c.sursa!==fs) return false;
+      if(fsp && c.tipSpatiu!==fsp) return false;
+      if(fpr && c.problema!==fpr) return false;
+      if(fst==='da' && !c.contactat) return false;
+      if(fst==='nu' && c.contactat) return false;
+      if(fst==='reapelare' && !(c.nextCallAt || c.nextCallReason)) return false;
+      if(fst==='nu_raspuns' && c.nextCallReason!=='Nu a răspuns') return false;
+      if(fimp==='da' && !c.important) return false;
+      if(fimp==='prioritate' && !(c.important || c.nextCallAt || c.nextCallReason)) return false;
+      if(fimp==='nu_interesat' && !c.notInterested) return false;
+      return true;
+    }).sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
+    document.getElementById('empty').style.display = clients.length ? 'none':'block';
+    const tbody = document.getElementById('tbody');
+    tbody.innerHTML = '';
+    filtered.forEach(c => tbody.appendChild(clientRowEl(c)));
+  }
+
+  function clientRowEl(c){
+    const tr = document.createElement('tr');
+    tr.className = 'rowhover';
+    if(c.notInterested) tr.style.opacity = '0.5';
+    const badge = c.contactat
+      ? '<span class="pill" style="background:var(--accent-bg);color:var(--accent-dark);">contactat</span>'
+      : '<span class="pill" style="background:var(--warm-bg);color:var(--warm-text);">de contactat</span>';
+    const recall = (c.nextCallAt || c.nextCallReason)
+      ? '<div style="font-size:11px;color:var(--warm-text);margin-top:4px;"><i class="ti ti-phone-outgoing" aria-hidden="true"></i> '+esc(c.nextCallReason||'reapelare')+(c.nextCallAt?' · '+fmtDateTime(c.nextCallAt):'')+'</div>'
+      : '';
+    const starTd = document.createElement('td');
+    starTd.style.cssText = 'padding-left:20px;white-space:nowrap;';
+    const starIcon = document.createElement('i');
+    starIcon.className = 'ti ti-star';
+    starIcon.style.cssText = 'font-size:17px;cursor:pointer;color:'+(c.important?'#d9a53c':'var(--line-strong)')+';';
+    starIcon.title = c.important ? 'client important — click să scoți' : 'marchează ca important';
+    starIcon.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await updateDoc(doc(db,'clients',c.id), { important: !c.important, updatedAt: new Date().toISOString() });
+    });
+    const xIcon = document.createElement('i');
+    xIcon.className = 'ti ti-circle-x';
+    xIcon.style.cssText = 'font-size:17px;cursor:pointer;margin-left:8px;color:'+(c.notInterested?'#c0453f':'var(--line-strong)')+';';
+    xIcon.title = c.notInterested ? 'neinteresat — click să anulezi' : 'marchează ca neinteresat';
+    xIcon.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await updateDoc(doc(db,'clients',c.id), { notInterested: !c.notInterested, updatedAt: new Date().toISOString() });
+    });
+    starTd.appendChild(starIcon);
+    starTd.appendChild(xIcon);
+    tr.appendChild(starTd);
+    const spatiu = [c.tipSpatiu, c.suprafata].filter(Boolean).join(' · ');
+    const nou = !c.contactat && !c.notInterested;
+    tr.insertAdjacentHTML('beforeend',
+      '<td style="max-width:200px;"><div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nume)+'</div>' +
+        (c.email ? '<div style="font-size:11.5px;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.email)+'</div>' : '') + '</td>' +
+      '<td class="mono" style="white-space:nowrap;">'+esc(c.telefon||'')+'</td>' +
+      '<td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+esc(spatiu || c.nevoie || '')+'">'+(spatiu ? esc(spatiu) : '<span style="color:var(--text3);">'+esc(c.nevoie||'')+'</span>')+'</td>' +
+      '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+esc(c.problema||'')+'">'+esc(c.problema||'')+'</td>' +
+      '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);">'+esc(c.rezultat||'')+'</td>' +
+      '<td>'+badge+recall+'</td>' +
+      '<td style="padding-right:24px;white-space:nowrap;color:'+(nou?'var(--warm-text)':'var(--text3)')+';font-weight:'+(nou?'500':'400')+';" title="'+esc(fmtDateTime(c.addedAt))+'">'+esc(L.vechime(c.addedAt))+'</td>'
+    );
+    const phoneTd = tr.children[2];
+    const cifre = L.cifreTelefon(c.telefon);
+    if(cifre){
+      const acts = document.createElement('span');
+      acts.style.cssText = 'margin-left:8px;display:inline-flex;gap:8px;vertical-align:middle;';
+      acts.innerHTML =
+        '<a href="tel:+'+cifre+'" title="Sună" style="color:var(--accent-dark);"><i class="ti ti-phone" style="font-size:16px;" aria-hidden="true"></i></a>' +
+        '<a href="'+esc(linkWhatsApp(c))+'" target="_blank" rel="noopener" title="WhatsApp, cu mesajul pregătit" style="color:#1f8f4e;"><i class="ti ti-brand-whatsapp" style="font-size:16px;" aria-hidden="true"></i></a>';
+      acts.querySelectorAll('a').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
+      phoneTd.appendChild(acts);
+    }
+    tr.addEventListener('click', () => openClientModal(c.id));
+    return tr;
+  }
+
+  function linkWhatsApp(c){
+    const cifre = L.cifreTelefon(c.telefon);
+    return 'https://wa.me/' + cifre + '?text=' + encodeURIComponent(L.mesajWhatsApp(c, numeExpeditor()));
+  }
+
+  /* ---------- OFERTE (DEALS) ---------- */
+  function dealsHtml(){
+    return (
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:22px;flex-wrap:wrap;gap:14px;">' +
+        '<div><div class="pagetitle">Oferte</div><div class="pagesub">'+deals.length+' oferte totale · '+fmtRon(activeDealsValue())+' active</div></div>' +
+        '<button id="addDealBtn" class="btn-primary">+ ofertă nouă</button>' +
+      '</div>' +
+      '<div class="dealsboard" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;">' + STAGES.map(stageColumnHtml).join('') + '</div>'
+    );
+  }
+
+  function stageColumnHtml(s){
+    return '<div>' +
+      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">' +
+        '<span class="pill" style="background:'+s.bg+';color:'+s.color+';">'+s.label+'</span>' +
+      '</div>' +
+      '<div id="col_'+s.key+'" style="display:flex;flex-direction:column;gap:12px;min-height:70px;"></div>' +
+      '<div id="tot_'+s.key+'" style="font-size:12px;color:var(--text3);margin-top:10px;"></div>' +
+    '</div>';
+  }
+
+  function wireDeals(){
+    document.getElementById('addDealBtn').addEventListener('click', () => openDealModal(null));
+    STAGES.forEach(s => {
+      const col = document.getElementById('col_'+s.key);
+      const items = deals.filter(d=>d.etapa===s.key).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
+      items.forEach(d => col.appendChild(dealCardEl(d, s)));
+      const total = items.reduce((sum,d)=>sum+(Number(d.valoare)||0),0);
+      document.getElementById('tot_'+s.key).textContent = fmtRon(total) + ' · ' + items.length;
+    });
+  }
+
+  function dealCardEl(d, stageDef){
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.style.cssText += 'padding:15px 16px;border-left:3px solid '+stageDef.color+';cursor:pointer;';
+    card.innerHTML =
+      '<div style="font-size:13.5px;font-weight:500;">'+esc(d.titlu||d.clientNume)+'</div>' +
+      '<div style="font-size:12.5px;color:var(--text2);margin-top:3px;">'+esc(d.clientNume)+'</div>' +
+      '<div class="mono" style="font-size:13px;color:var(--accent-dark);margin-top:8px;">'+fmtRon(d.valoare)+'</div>' +
+      '<div style="font-size:11.5px;color:var(--text3);margin-top:6px;">creat '+fmtDate(d.createdAt)+'</div>';
+    card.addEventListener('click', () => openDealModal(d.id));
+    return card;
+  }
+
+  /* ---------- SARCINI (TASKS) ---------- */
+  function getTasks(){
+    const tasks = [];
+    clients.filter(c=>!c.notInterested).forEach(c => {
+      if(c.nextCallAt){
+        tasks.push({id:'ct_'+c.id, type:'client', mode:'recall', refId:c.id, label:(c.nextCallReason?c.nextCallReason+' — ':'')+'Sună din nou pe '+c.nume, sub: fmtDateTime(c.nextCallAt) + (c.telefon?' · '+c.telefon:''), ts:c.nextCallAt});
+      } else if(!c.contactat){
+        tasks.push({id:'ct_'+c.id, type:'client', mode:'contact', refId:c.id, label:'Sună pe '+c.nume, sub: [c.telefon || c.email || '', 'lead venit '+L.vechime(c.addedAt)].filter(Boolean).join(' · '), ts:c.addedAt});
+      }
+    });
+    deals.filter(d=>d.followUp).forEach(d => {
+      tasks.push({id:'dl_'+d.id, type:'deal', refId:d.id, label:'Follow-up ofertă — '+d.clientNume, sub: fmtDate(d.followUp), ts:d.followUp});
+    });
+    return tasks.sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
+  }
+
+  function tasksHtml(){
+    const tasks = getTasks();
+    return (
+      '<div style="margin-bottom:22px;"><div class="pagetitle">Sarcini</div><div class="pagesub">'+tasks.length+' de rezolvat</div></div>' +
+      '<div class="card" style="padding:0;overflow:hidden;">' +
+        '<div id="taskList" style="display:flex;flex-direction:column;"></div>' +
+        (tasks.length===0 ? '<div style="text-align:center;padding:50px 20px;color:var(--text3);font-size:13px;">nicio sarcină restantă</div>' : '') +
+      '</div>'
+    );
+  }
+
+  function wireTasks(){
+    const list = document.getElementById('taskList');
+    getTasks().forEach(t => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:14px;padding:17px 22px;border-bottom:1px solid var(--line);cursor:pointer;';
+      row.innerHTML =
+        '<i class="ti ti-clock" style="font-size:16px;color:var(--warm-text);flex-shrink:0;" aria-hidden="true"></i>' +
+        '<div style="flex:1;"><div style="font-size:13.5px;">'+esc(t.label)+'</div><div style="font-size:12px;color:var(--text3);margin-top:2px;">'+esc(t.sub)+'</div></div>' +
+        '<button class="btn" data-done="1">rezolvat</button>';
+      row.querySelector('button').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if(t.type==='client' && t.mode==='recall'){
+          await updateDoc(doc(db,'clients',t.refId), { nextCallAt:'', nextCallReason:'', updatedAt:new Date().toISOString() });
+          const c = clients.find(x=>x.id===t.refId);
+          logActivity('Reapelare rezolvată: '+(c?c.nume:''));
+        } else if(t.type==='client'){
+          await updateDoc(doc(db,'clients',t.refId), { contactat:true, updatedAt:new Date().toISOString() });
+          const c = clients.find(x=>x.id===t.refId);
+          logActivity('Marcat ca și contactat: '+(c?c.nume:''));
+        } else {
+          await updateDoc(doc(db,'deals',t.refId), { followUp:'', updatedAt:new Date().toISOString() });
+          const d = deals.find(x=>x.id===t.refId);
+          logActivity('Follow-up rezolvat pentru '+(d?d.clientNume:''));
+        }
+      });
+      row.addEventListener('click', () => { if(t.type==='client') openClientModal(t.refId); else openDealModal(t.refId); });
+      list.appendChild(row);
+    });
+  }
+
+  /* ---------- ACTIVITATE ---------- */
+  function activityHtml(){
+    const items = activity.slice().sort((a,b)=>(b.ts||'').localeCompare(a.ts||''));
+    return (
+      '<div style="margin-bottom:22px;"><div class="pagetitle">Activitate</div><div class="pagesub">jurnal de acțiuni</div></div>' +
+      '<div class="card" style="padding:0;overflow:hidden;">' +
+        '<div style="display:flex;flex-direction:column;">' +
+          items.map(a => '<div style="padding:17px 22px;border-bottom:1px solid var(--line);font-size:13.5px;">'+esc(a.text)+'<div style="font-size:12px;color:var(--text3);margin-top:3px;">'+fmtDateTime(a.ts)+'</div></div>').join('') +
+        '</div>' +
+        (items.length===0 ? '<div style="text-align:center;padding:50px 20px;color:var(--text3);font-size:13px;">nicio activitate încă</div>' : '') +
+      '</div>'
+    );
+  }
+
+  /* ---------- SHARED FORM HELPERS ---------- */
+  function field(label, id, val, type){
+    return '<div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">'+label+'</div>' +
+      '<input id="'+id+'" type="'+(type||'text')+'" value="'+esc(val||'')+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;"></div>';
+  }
+  function textareaField(label, id, val){
+    return '<div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">'+label+'</div>' +
+      '<textarea id="'+id+'" rows="2" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;resize:vertical;font-family:inherit;">'+esc(val||'')+'</textarea></div>';
+  }
+  function selectField(label, id, options, selected, withEmpty){
+    const opts = options.map(o => '<option value="'+o+'"'+(o===selected?' selected':'')+'>'+o+'</option>').join('');
+    return '<div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">'+label+'</div>' +
+      '<select id="'+id+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;">' +
+      (withEmpty?'<option value="">–</option>':'') + opts + '</select></div>';
+  }
+  function dimensionsField(label, c){
+    return '<div style="margin-bottom:10px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">'+label+'</div>' +
+      '<div style="display:flex;gap:8px;">' +
+        '<input id="f_latime" type="number" step="0.01" min="0" placeholder="Lățime (m)" value="'+esc(c&&c.latime!=null?c.latime:'')+'" style="flex:1;min-width:0;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 10px;border-radius:8px;font-size:13px;outline:none;">' +
+        '<input id="f_lungime" type="number" step="0.01" min="0" placeholder="Lungime (m)" value="'+esc(c&&c.lungime!=null?c.lungime:'')+'" style="flex:1;min-width:0;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 10px;border-radius:8px;font-size:13px;outline:none;">' +
+        '<input id="f_inaltime" type="number" step="0.01" min="0" placeholder="Înălțime (m)" value="'+esc(c&&c.inaltime!=null?c.inaltime:'')+'" style="flex:1;min-width:0;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 10px;border-radius:8px;font-size:13px;outline:none;">' +
+      '</div></div>';
+  }
+
+  /* ---------- CLIENT MODAL ---------- */
+  let clientPrefill = null;
+  let emailPanelOpen = false;
+
+  function val(id){ const el = document.getElementById(id); return el ? String(el.value||'').trim() : ''; }
+
+  function optionList(options, selected){
+    const opts = options.slice();
+    if(selected && !opts.includes(selected)) opts.push(selected);
+    return '<option value="">–</option>' + opts.map(o => '<option value="'+esc(o)+'"'+(o===selected?' selected':'')+'>'+esc(o)+'</option>').join('');
+  }
+  function selectRow(label, id, options, selected){
+    return '<div style="margin-bottom:10px;flex:1;min-width:150px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">'+label+'</div>' +
+      '<select id="'+id+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;">'+optionList(options, selected)+'</select></div>';
+  }
+  function inputRow(label, id, value, placeholder){
+    return '<div style="margin-bottom:10px;flex:1;min-width:150px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">'+label+'</div>' +
+      '<input id="'+id+'" type="text" value="'+esc(value||'')+'" placeholder="'+esc(placeholder||'')+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;"></div>';
+  }
+  function sectionTitle(text){
+    return '<div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin:16px 0 8px;">'+text+'</div>';
+  }
+  function modalHeader(title){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">' +
+      '<div style="font-size:15px;font-weight:500;">'+title+'</div>' +
+      '<button id="closeModal" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">&times;</button>' +
+    '</div>';
+  }
+
+  // Ce e acum în formular, pentru butoanele Sună / WhatsApp / mail.
+  function formClientSnapshot(){
+    const tel = L.normalizeazaTelefon(val('f_telefon'), val('f_tara') || 'RO');
+    return { nume: val('f_nume'), telefon: tel.telefon, email: val('f_email'), tipSpatiu: val('f_tip'), suprafata: val('f_supr'), problema: val('f_problema') };
+  }
+
+  function copyRow(label, text, id){
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);">' +
+      '<div style="flex:1;min-width:0;"><div style="font-size:11px;color:var(--text3);">'+label+'</div>' +
+      '<div style="font-size:12.5px;color:var(--text);white-space:pre-wrap;max-height:'+(id==='cpCorp'?'90px':'none')+';overflow:hidden;">'+esc(text)+'</div></div>' +
+      '<button class="btn" id="'+id+'" style="padding:6px 10px;font-size:12px;flex-shrink:0;">copiază</button></div>';
+  }
+
+  function renderQuickActions(){
+    const box = document.getElementById('quickActions');
+    if(!box) return;
+    const s = formClientSnapshot();
+    const cifre = L.cifreTelefon(s.telefon);
+    const e = L.mesajEmail(s);
+    box.innerHTML =
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        (cifre ? '<a class="btn" href="tel:+'+cifre+'" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-phone" aria-hidden="true"></i>Sună</a>' : '') +
+        (cifre ? '<a class="btn" href="'+esc(linkWhatsApp(s))+'" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' : '') +
+        (s.email ? '<button class="btn" id="qaEmail" style="display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-mail" aria-hidden="true"></i>Mail de răspuns</button>' : '') +
+      '</div>' +
+      (s.email && emailPanelOpen
+        ? '<div style="margin-top:10px;padding:4px 12px 10px;background:#faf9f6;border:1px solid var(--line);border-radius:8px;">' +
+            '<div style="font-size:12px;color:var(--text2);margin:8px 0 2px;">În webmail: „Scrie un mesaj”, apoi copiezi de aici pe rând destinatarul, subiectul și textul.</div>' +
+            copyRow('Către', s.email, 'cpCatre') + copyRow('Subiect', e.subiect, 'cpSubiect') + copyRow('Text', e.corp, 'cpCorp') +
+          '</div>'
+        : '');
+    const btn = document.getElementById('qaEmail');
+    if(btn) btn.onclick = () => { emailPanelOpen = !emailPanelOpen; renderQuickActions(); };
+    const bind = (id, text, msg) => { const b = document.getElementById(id); if(b) b.onclick = () => copiaza(text, msg); };
+    bind('cpCatre', s.email, 'Adresa e copiată.');
+    bind('cpSubiect', e.subiect, 'Subiectul e copiat.');
+    bind('cpCorp', e.corp, 'Textul e copiat. Lipește-l în mail (Cmd+V) și citește-l înainte de trimitere.');
+  }
+
+  function gasesteDublura(telefon, email, exceptId){
+    const d = L.cifreTelefon(telefon);
+    const em = String(email||'').trim().toLowerCase();
+    return clients.find(x => x.id !== exceptId && (
+      (d.length >= 8 && L.cifreTelefon(x.telefon) === d) ||
+      (em && String(x.email||'').trim().toLowerCase() === em)
+    ));
+  }
+
+  function openClientModal(id, prefill){
+    editingClientId = id || null;
+    clientPrefill = id ? null : (prefill || null);
+    emailPanelOpen = false;
+    const c = id ? clients.find(x=>x.id===id) : (prefill || null);
+    const tara = (c && c.tara) || 'RO';
+    const taraOpts = L.TARI.slice();
+    if(tara && !taraOpts.some(t => t[0]===tara)) taraOpts.push([tara, tara, '']);
+    const m = document.getElementById('modal');
+    m.innerHTML =
+      modalHeader(id ? 'Fișa clientului' : (prefill ? 'Client nou, din mail' : 'Client nou')) +
+      (id ? '<div style="font-size:12px;color:var(--text3);margin-bottom:12px;">venit '+esc(L.vechime(c.addedAt))+' ('+esc(fmtDateTime(c.addedAt))+')' + (c.sursa?' · '+esc(c.sursa):'') + (c.reclama?' · '+esc(c.reclama):'') + '</div>'
+          : (prefill ? '<div style="font-size:12px;color:var(--accent-dark);background:var(--accent-bg);padding:8px 10px;border-radius:8px;margin-bottom:12px;">Am completat fișa din mail. Verifică datele, apoi „salvează”.</div>' : '')) +
+      '<div id="quickActions" style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line);"></div>' +
+      field('Nume','f_nume', c?c.nume:'') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        '<div style="margin-bottom:10px;flex:0 0 150px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">Țara</div>' +
+          '<select id="f_tara" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;">' +
+            taraOpts.map(([cod, nume, p]) => '<option value="'+cod+'"'+(cod===tara?' selected':'')+'>'+esc(nume)+(p?' (+'+p+')':'')+'</option>').join('') +
+          '</select></div>' +
+        inputRow('Telefon','f_telefon', c?c.telefon:'', '0724 500 507') +
+      '</div>' +
+      field('Email','f_email', c?c.email:'') +
+      field('Oraș sau adresă','f_adresa', c?c.adresa:'') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        selectRow('Sursă','f_sursa', SURSE, c?c.sursa:'') +
+        inputRow('Formular sau reclamă','f_reclama', c?c.reclama:'', 'de exemplu: pagina de consultanță') +
+      '</div>' +
+      sectionTitle('Spațiul') +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+        selectRow('Tip spațiu','f_tip', L.TIP_SPATIU, c?c.tipSpatiu:'') +
+        selectRow('Suprafață','f_supr', L.SUPRAFATA, c?c.suprafata:'') +
+      '</div>' +
+      selectRow('Problema','f_problema', L.PROBLEMA, c?c.problema:'') +
+      dimensionsField('Dimensiuni măsurate (dacă le știi)', c) +
+      textareaField('Mesajul clientului (din formular)','f_mesaj', c?c.mesaj:'') +
+      sectionTitle('Discuția') +
+      textareaField('Notițe (nevoia clientului)','f_nevoie', c?c.nevoie:'') +
+      textareaField('Rezultatul discuției la telefon','f_rezultat', c?c.rezultat:'') +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:4px 0;">' +
+        '<input id="f_contactat" type="checkbox" '+(c&&c.contactat?'checked':'')+' style="width:16px;height:16px;accent-color:var(--accent);">' +
+        '<label for="f_contactat" style="font-size:13px;color:var(--text2);cursor:pointer;">am luat legătura cu acest client</label></div>' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:4px 0;">' +
+        '<input id="f_important" type="checkbox" '+(c&&c.important?'checked':'')+' style="width:16px;height:16px;accent-color:#d9a53c;">' +
+        '<label for="f_important" style="font-size:13px;color:var(--text2);cursor:pointer;">⭐ client important / potențial ridicat</label></div>' +
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:4px 0;">' +
+        '<input id="f_notinterested" type="checkbox" '+(c&&c.notInterested?'checked':'')+' style="width:16px;height:16px;accent-color:#c0453f;">' +
+        '<label for="f_notinterested" style="font-size:13px;color:var(--text2);cursor:pointer;">✕ neinteresat: nu mai suna, dar păstrează în bază</label></div>' +
+      '<div style="margin-top:14px;padding:12px;background:#fbf5ea;border:1px solid var(--warm-bg);border-radius:8px;">' +
+        '<div style="font-size:12px;font-weight:500;color:var(--warm-text);margin-bottom:8px;">Reapelare</div>' +
+        selectRow('Motiv','f_recall_reason', ['Nu a răspuns','A cerut alt moment','Ocupat, revin eu'], c?c.nextCallReason:'') +
+        '<div style="margin-bottom:0;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">Data și ora reapelării</div>' +
+        '<input id="f_recall_at" type="datetime-local" value="'+esc(toDatetimeLocal(c?c.nextCallAt:''))+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;"></div>' +
+      '</div>' +
+      '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:10px;"></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">' +
+        (id && isAdmin()?'<button id="deleteBtn" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;">șterge client</button>':'<span></span>') +
+        '<div style="display:flex;gap:8px;"><button id="cancelBtn" class="btn">anulează</button><button id="saveBtn" class="btn-primary">salvează</button></div>' +
+      '</div>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    m.scrollTop = 0;
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('cancelBtn').onclick = closeModal;
+    document.getElementById('saveBtn').onclick = saveClient;
+    if(id && isAdmin()) document.getElementById('deleteBtn').onclick = () => deleteClient(id);
+    ['f_nume','f_telefon','f_email'].forEach(fid => document.getElementById(fid).addEventListener('input', renderQuickActions));
+    ['f_tara','f_tip','f_supr','f_problema'].forEach(fid => document.getElementById(fid).addEventListener('change', renderQuickActions));
+    renderQuickActions();
+  }
+
+  function formError(msg){
+    const errEl = document.getElementById('formError');
+    errEl.textContent = msg;
+    errEl.style.display = 'block';
+  }
+
+  async function saveClient(){
+    const nume = val('f_nume');
+    const tara = val('f_tara') || 'RO';
+    const telBrut = val('f_telefon');
+    const email = val('f_email');
+    if(!nume){ formError('completează numele'); return; }
+    if(!telBrut && !email){ formError('completează telefonul sau emailul'); return; }
+    let telefon = '';
+    if(telBrut){
+      const t = L.normalizeazaTelefon(telBrut, tara);
+      if(!t.ok){ formError('numărul de telefon nu pare complet: ' + (t.telefon || telBrut)); return; }
+      telefon = t.telefon;
+    }
+    document.getElementById('formError').style.display = 'none';
+    const num = id => document.getElementById(id).value === '' ? null : parseFloat(document.getElementById(id).value);
+    const data = {
+      nume, telefon, tara, email,
+      adresa: val('f_adresa'),
+      sursa: val('f_sursa'),
+      reclama: val('f_reclama'),
+      tipSpatiu: val('f_tip'),
+      suprafata: val('f_supr'),
+      problema: val('f_problema'),
+      mesaj: val('f_mesaj'),
+      latime: num('f_latime'),
+      lungime: num('f_lungime'),
+      inaltime: num('f_inaltime'),
+      nevoie: val('f_nevoie'),
+      rezultat: val('f_rezultat'),
+      contactat: document.getElementById('f_contactat').checked,
+      important: document.getElementById('f_important').checked,
+      notInterested: document.getElementById('f_notinterested').checked,
+      nextCallReason: val('f_recall_reason'),
+      nextCallAt: document.getElementById('f_recall_at').value ? new Date(document.getElementById('f_recall_at').value).toISOString() : '',
+      updatedAt: new Date().toISOString()
+    };
+    const saveBtn = document.getElementById('saveBtn');
+    try{
+      if(editingClientId){
+        saveBtn.disabled = true;
+        await updateDoc(doc(db,'clients',editingClientId), data);
+        logActivity('Client actualizat: '+nume);
+      } else {
+        const dup = gasesteDublura(telefon, email, null);
+        if(dup && !confirm('Există deja un client cu același telefon sau email: '+dup.nume+' (adăugat pe '+fmtDate(dup.addedAt)+').\n\nÎl adaug totuși ca client nou?')) return;
+        saveBtn.disabled = true;
+        data.addedAt = (clientPrefill && clientPrefill.addedAt) || new Date().toISOString();
+        await addDoc(clientsCol, data);
+        logActivity('Client nou adăugat: '+nume + (clientPrefill ? ' (din mail)' : ''));
+      }
+      closeModal();
+    }catch(err){
+      console.error(err);
+      saveBtn.disabled = false;
+      formError('Nu s-a salvat: ' + (err && err.code === 'permission-denied' ? 'contul tău nu are voie să scrie în CRM.' : 'verifică internetul și încearcă din nou.'));
+    }
+  }
+
+  /* ---------- CLIENT NOU DIN MAIL ---------- */
+  function openPasteModal(){
+    const m = document.getElementById('modal');
+    m.innerHTML =
+      modalHeader('Client nou din mail') +
+      '<div style="font-size:13px;color:var(--text2);margin-bottom:10px;line-height:1.5;">Deschide în webmail mailul „Mesaj nou de la client”, selectează cu mouse-ul tot textul din chenarul alb, copiază-l (Cmd+C) și lipește-l aici (Cmd+V).</div>' +
+      '<textarea id="f_mail" rows="11" placeholder="Cod țară: RO&#10;Name: ...&#10;Email: ...&#10;Phone: ..." style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:10px 11px;border-radius:8px;font-size:12.5px;outline:none;resize:vertical;font-family:inherit;"></textarea>' +
+      '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:8px;"></div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px;"><button id="cancelBtn" class="btn">anulează</button><button id="parseBtn" class="btn-primary">completează fișa</button></div>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('cancelBtn').onclick = closeModal;
+    const ta = document.getElementById('f_mail');
+    ta.focus();
+    document.getElementById('parseBtn').onclick = () => {
+      const r = L.citesteMail(ta.value);
+      if(!r.nume && !r.email && !r.telefonBrut){
+        formError('Nu am găsit în text numele, emailul sau telefonul. Copiază tot mailul, cu rândurile „Name”, „Email” și „Phone”.');
+        return;
+      }
+      const tara = r.tara || 'RO';
+      const tel = r.telefonBrut ? L.normalizeazaTelefon(r.telefonBrut, tara) : { telefon:'', ok:false };
+      openClientModal(null, {
+        nume: r.nume, email: r.email, tara,
+        telefon: tel.ok ? tel.telefon : r.telefonBrut,
+        tipSpatiu: r.tipSpatiu, suprafata: r.suprafata, problema: r.problema,
+        mesaj: [r.subiect ? 'Subiect: ' + r.subiect : '', r.mesaj].filter(Boolean).join('\n'),
+        sursa: 'Site (formular)', reclama: r.formular
+      });
+    };
+  }
+
+  async function deleteClient(id){
+    if(!isAdmin()) return;
+    const c = clients.find(x=>x.id===id);
+    if(!confirm('Ștergi definitiv clientul "'+(c?c.nume:'')+'"? Nu poate fi recuperat.')) return;
+    await deleteDoc(doc(db,'clients',id));
+    if(c) logActivity('Client șters: '+c.nume);
+    closeModal();
+  }
+
+  /* ---------- DEAL MODAL ---------- */
+  function openDealModal(id){
+    editingDealId = id || null;
+    const d = id ? deals.find(x=>x.id===id) : null;
+    const m = document.getElementById('modal');
+    const clientOptions = clients.map(c=>c.nume);
+    m.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
+        '<div style="font-size:15px;font-weight:500;">'+(d?'Editează ofertă':'Ofertă nouă')+'</div>' +
+        '<button id="closeModal" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">&times;</button>' +
+      '</div>' +
+      (clients.length ? selectField('Client','f_client', clientOptions, d?d.clientNume:'', true) : '<div style="font-size:12px;color:var(--warm-text);margin-bottom:10px;">adaugă întâi un client la Clienți</div>') +
+      field('Titlu ofertă (opțional)','f_titlu', d?d.titlu:'') +
+      field('Valoare (RON)','f_valoare', d?d.valoare:'', 'number') +
+      selectField('Etapă','f_etapa', STAGES.map(s=>s.label), ((d && STAGES.find(s=>s.key===d.etapa)) || STAGES[0]).label) +
+      field('Follow-up (opțional)','f_followup', d?d.followUp:'', 'date') +
+      '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:6px;"></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">' +
+        (d?'<button id="deleteBtn" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;">șterge ofertă</button>':'<span></span>') +
+        '<div style="display:flex;gap:8px;"><button id="cancelBtn" class="btn">anulează</button><button id="saveBtn" class="btn-primary">salvează</button></div>' +
+      '</div>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('cancelBtn').onclick = closeModal;
+    document.getElementById('saveBtn').onclick = saveDeal;
+    if(d) document.getElementById('deleteBtn').onclick = () => deleteDeal(d.id);
+  }
+
+  async function saveDeal(){
+    const errEl = document.getElementById('formError');
+    const clientSel = document.getElementById('f_client');
+    const clientNume = clientSel ? clientSel.value : '';
+    if(!clientNume){ errEl.textContent='selectează un client'; errEl.style.display='block'; return; }
+    errEl.style.display='none';
+    const stageLabel = document.getElementById('f_etapa').value;
+    const stageObj = STAGES.find(s=>s.label===stageLabel) || STAGES[0];
+    const data = {
+      clientNume,
+      titlu: document.getElementById('f_titlu').value.trim(),
+      valoare: parseFloat(document.getElementById('f_valoare').value) || 0,
+      etapa: stageObj.key,
+      followUp: document.getElementById('f_followup').value,
+      updatedAt: new Date().toISOString()
+    };
+    if(editingDealId){
+      await updateDoc(doc(db,'deals',editingDealId), data);
+      logActivity('Ofertă actualizată — '+clientNume+' → '+stageObj.label);
+    } else {
+      data.createdAt = new Date().toISOString();
+      await addDoc(dealsCol, data);
+      logActivity('Ofertă nouă creată pentru '+clientNume);
+    }
+    closeModal();
+  }
+
+  async function deleteDeal(id){
+    const d = deals.find(x=>x.id===id);
+    if(!confirm('Ștergi definitiv oferta pentru "'+(d?d.clientNume:'')+'"? Nu poate fi recuperată.')) return;
+    await deleteDoc(doc(db,'deals',id));
+    if(d) logActivity('Ofertă ștearsă — '+d.clientNume);
+    closeModal();
+  }
+
+  function closeModal(){
+    document.getElementById('modalWrap').style.display = 'none';
+    editingClientId = null; editingDealId = null; editingEventId = null; calSelectedDate = null; clientPrefill = null; emailPanelOpen = false;
+  }
+
+  document.getElementById('topSearch').addEventListener('keydown', (e) => {
+    if(e.key==='Enter'){
+      currentView='clienti'; renderNav(); renderPage();
+      const s = document.getElementById('search');
+      if(s){ s.value = document.getElementById('topSearch').value; renderClientsTable(); }
+    }
+  });
+
+  window.addEventListener('beforeunload', destroyCharts);
+})();
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW register failed', err));
+  });
+}
