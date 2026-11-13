@@ -6,6 +6,7 @@ import {
   getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, sendPasswordResetEmail
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import * as L from "./lead.js";
+import * as E from "./etape.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDU_QIv1zVKAbhlNDnWeg6ZaDTGvVaHuCs",
@@ -24,6 +25,7 @@ const clientsCol = collection(db, 'clients');
 const dealsCol = collection(db, 'deals');
 const activityCol = collection(db, 'activity');
 const eventsCol = collection(db, 'events');
+const istoricCol = collection(db, 'istoric');
 
 const ADMIN_EMAIL = 'beiathedj@gmail.com';
 function isAdmin(){ return !!(auth.currentUser && auth.currentUser.email === ADMIN_EMAIL); }
@@ -33,33 +35,22 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
 
 (function(){
   const NAV = [
-
-    {key:'dashboard', label:'Acasă', icon:'ti-home'},
+    {key:'azi', label:'Azi', icon:'ti-sun'},
     {key:'clienti', label:'Clienți', icon:'ti-users'},
-    {key:'oferte', label:'Oferte', icon:'ti-file-text'},
+    {key:'etape', label:'Etape', icon:'ti-layout-kanban'},
     {key:'calendar', label:'Calendar', icon:'ti-calendar'},
-    {key:'sarcini', label:'Sarcini', icon:'ti-checklist'},
+    {key:'rapoarte', label:'Rapoarte', icon:'ti-chart-bar'},
     {key:'activitate', label:'Activitate', icon:'ti-history'},
     {key:'ghid', label:'Ghid', icon:'ti-headset'}
   ];
   const SURSE = L.SURSE;
-  const STAGES = [
-    {key:'lead_nou', label:'Lead nou', color:'var(--blue)', bg:'var(--blue-bg)'},
-    {key:'oferta_trimisa', label:'Ofertă trimisă', color:'var(--warm-text)', bg:'var(--warm-bg)'},
-    {key:'negociere', label:'Negociere', color:'var(--pink)', bg:'var(--pink-bg)'},
-    {key:'client', label:'Client (câștigat)', color:'var(--green)', bg:'var(--green-bg)'},
-    {key:'pierdut', label:'Pierdut', color:'var(--red)', bg:'var(--red-bg)'}
-  ];
 
-  let currentView = 'dashboard';
-  let clients = [], deals = [], activity = [], events = [];
-  let loadedFlags = {clients:false, deals:false, activity:false, events:false};
-  let editingClientId = null, editingDealId = null, editingEventId = null;
-  let dashRange = 'month';
+  let currentView = 'azi';
+  let clients = [], deals = [], activity = [], events = [], istoric = [];
+  let istoricEroare = false;
+  let loadedFlags = {clients:false, deals:false, activity:false, events:false, istoric:false};
+  let editingClientId = null, editingEventId = null;
   let charts = {};
-  let resizingKey = null;
-  let todayCardOffset = 0;
-  let dashResizeObserver = null;
   const now0 = new Date();
   let calYear = now0.getFullYear(), calMonth = now0.getMonth();
   let calSelectedDate = null;
@@ -120,30 +111,6 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     catch(e){ console.error(e); toast('Nu am putut copia textul. Încearcă din nou.'); }
   }
 
-  /* ---------- INTERVALUL DE PE ACASĂ ---------- */
-  function rangeBounds(){
-    const now = new Date();
-    if(dashRange==='month'){
-      const s = new Date(now.getFullYear(), now.getMonth(), 1);
-      return { start:s, end:now, prevStart:new Date(now.getFullYear(), now.getMonth()-1, 1), prevEnd:s, label:'Luna aceasta', prevLabel:'luna trecută' };
-    }
-    if(dashRange==='30d'){
-      const s = new Date(now.getTime() - 30*864e5);
-      return { start:s, end:now, prevStart:new Date(now.getTime() - 60*864e5), prevEnd:s, label:'Ultimele 30 de zile', prevLabel:'cele 30 de zile dinainte' };
-    }
-    return { start:null, end:now, label:'Tot timpul' };
-  }
-  function inRange(iso, b){
-    if(!iso) return false;
-    const d = new Date(iso);
-    if(isNaN(d.getTime())) return false;
-    if(b.start && d < b.start) return false;
-    return d <= b.end;
-  }
-  function countBetween(list, field, from, to){
-    return list.filter(x => { const d = new Date(x[field]); return !isNaN(d.getTime()) && d >= from && d < to; }).length;
-  }
-
   async function logActivity(text){
     try{ await addDoc(activityCol, { ts: new Date().toISOString(), text }); }catch(e){ console.error(e); }
   }
@@ -151,62 +118,42 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   function setConnStatus(text, ok){
     const el = document.getElementById('connStatus');
     el.textContent = text;
-    el.style.color = ok ? 'var(--accent-dark)' : 'var(--text3)';
-    el.style.borderColor = ok ? 'var(--accent)' : 'var(--line-strong)';
-  }
-
-  function maybeInitialRender(){
-    if(loadedFlags.clients && loadedFlags.deals && loadedFlags.activity && loadedFlags.events){
-      setConnStatus('conectat · date live', true);
-      renderPage();
-    }
+    el.style.color = ok ? 'var(--accent-dark)' : 'var(--red)';
+    el.style.borderColor = ok ? 'var(--accent)' : 'var(--red)';
+    el.style.opacity = '1';
+    clearTimeout(el._t);
+    // Când totul merge, eticheta dispare după câteva secunde, ca să nu acopere butoanele; la eroare rămâne.
+    if(ok) el._t = setTimeout(() => { el.style.transition = 'opacity 0.6s'; el.style.opacity = '0'; }, 4000);
   }
 
   let listenersStarted = false;
   function startListeners(){
     if(listenersStarted) return;
     listenersStarted = true;
-
-    function checkAllLoaded(){ return loadedFlags.clients && loadedFlags.deals && loadedFlags.activity && loadedFlags.events; }
-
+    const toate = () => Object.values(loadedFlags).every(Boolean);
+    function gata_(cheie){
+      loadedFlags[cheie] = true;
+      if(toate()){ setConnStatus('conectat · date live', true); renderPage(); }
+    }
     onSnapshot(clientsCol, snap => {
       clients = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
-      loadedFlags.clients = true;
-      if(checkAllLoaded()){ setConnStatus('conectat · date live', true); renderPage(); }
+      gata_('clients');
     }, err => { console.error(err); setConnStatus('eroare conexiune', false); });
-
-    onSnapshot(dealsCol, snap => {
-      deals = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
-      loadedFlags.deals = true;
-      if(checkAllLoaded()){ setConnStatus('conectat · date live', true); renderPage(); }
-    }, err => console.error(err));
-
-    onSnapshot(activityCol, snap => {
-      activity = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
-      loadedFlags.activity = true;
-      if(checkAllLoaded()){ setConnStatus('conectat · date live', true); renderPage(); }
-    }, err => console.error(err));
-
-    onSnapshot(eventsCol, snap => {
-      events = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
-      loadedFlags.events = true;
-      if(checkAllLoaded()){ setConnStatus('conectat · date live', true); renderPage(); }
-    }, err => console.error(err));
+    onSnapshot(dealsCol, snap => { deals = snap.docs.map(d => Object.assign({id:d.id}, d.data())); gata_('deals'); },
+      err => { console.error(err); gata_('deals'); });
+    onSnapshot(activityCol, snap => { activity = snap.docs.map(d => Object.assign({id:d.id}, d.data())); gata_('activity'); },
+      err => { console.error(err); gata_('activity'); });
+    onSnapshot(eventsCol, snap => { events = snap.docs.map(d => Object.assign({id:d.id}, d.data())); gata_('events'); },
+      err => { console.error(err); gata_('events'); });
+    onSnapshot(istoricCol, snap => {
+      istoric = snap.docs.map(d => Object.assign({id:d.id}, d.data()));
+      istoricEroare = false;
+      gata_('istoric');
+      renderIstoricBox();
+    }, err => { console.error(err); istoricEroare = true; istoric = []; gata_('istoric'); });
   }
 
   renderNav();
-
-  document.addEventListener('mousedown', (e) => {
-    const card = e.target.closest('.dashcard');
-    if(!card) return;
-    const rect = card.getBoundingClientRect();
-    if((rect.right - e.clientX) < 24 && (rect.bottom - e.clientY) < 24){
-      resizingKey = card.dataset.key;
-    }
-  });
-  document.addEventListener('mouseup', () => {
-    setTimeout(() => { resizingKey = null; }, 80);
-  });
 
   /* ---------- AUTH ---------- */
   function showLogin(){
@@ -282,402 +229,427 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   function renderPage(){
     destroyCharts();
     const page = document.getElementById('page');
-    if(currentView==='dashboard'){ page.innerHTML = dashboardHtml(); wireDashboard(); }
+    if(currentView==='azi'){ page.innerHTML = aziHtml(); wireAzi(); }
     else if(currentView==='clienti'){ page.innerHTML = clientsHtml(); wireClients(); }
-    else if(currentView==='oferte'){ page.innerHTML = dealsHtml(); wireDeals(); }
+    else if(currentView==='etape'){ page.innerHTML = etapeHtml(); wireEtape(); }
     else if(currentView==='calendar'){ page.innerHTML = calendarHtml(); wireCalendar(); }
-    else if(currentView==='sarcini'){ page.innerHTML = tasksHtml(); wireTasks(); }
+    else if(currentView==='rapoarte'){ page.innerHTML = rapoarteHtml(); wireRapoarte(); }
     else if(currentView==='activitate'){ page.innerHTML = activityHtml(); }
     else { page.innerHTML = ghidHtml(); wireGhid(); }
   }
 
-  /* ---------- DASHBOARD ---------- */
-  function hcard(inner, extraStyle){
-    return '<div style="background:#fff;border:1px solid var(--line-strong);border-radius:10px;padding:20px 22px;'+(extraStyle||'')+'">'+inner+'</div>';
+  /* ---------- AJUTOARE PENTRU ETAPE ȘI ISTORIC ---------- */
+  function etapaPill(key, mic){
+    const e = E.etapa(key);
+    return '<span class="pill" style="background:'+e.fundal+';color:'+e.culoare+';'+(mic?'font-size:11px;padding:2px 8px;':'')+'">'+esc(e.label)+'</span>';
   }
-  function cardTitle(text){
-    return '<div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:500;color:#0d5c56;margin-bottom:10px;padding-right:44px;">'+text+'<i class="ti ti-info-circle" style="font-size:14px;color:var(--text3);" aria-hidden="true"></i></div>';
+  function culoareVechime(iso){
+    const ore = (Date.now() - new Date(iso).getTime()) / 36e5;
+    if(isNaN(ore)) return 'var(--text3)';
+    if(ore < 1) return '#1f8f4e';
+    if(ore < 24) return 'var(--warm-text)';
+    return 'var(--red)';
   }
-  function minipill(text){
-    return '<span style="background:#f2f1ea;color:var(--text2);font-size:11.5px;font-weight:500;padding:4px 10px;border-radius:6px;">'+text+'</span>';
+  const ZILE = ['duminică','luni','marți','miercuri','joi','vineri','sâmbătă'];
+  function cand(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return '';
+    const ora = d.toLocaleTimeString('ro-RO', {hour:'2-digit', minute:'2-digit'});
+    const azi = new Date(); azi.setHours(0,0,0,0);
+    const zi = new Date(d); zi.setHours(0,0,0,0);
+    const dif = Math.round((zi - azi) / 864e5);
+    if(dif === 0) return 'azi ' + ora;
+    if(dif === 1) return 'mâine ' + ora;
+    if(dif === -1) return 'ieri ' + ora;
+    if(dif > 1 && dif < 7) return ZILE[d.getDay()] + ' ' + ora;
+    return d.toLocaleDateString('ro-RO', {day:'2-digit', month:'2-digit'}) + ' ' + ora;
   }
-  function emptyState(msg){
-    return '<div style="text-align:center;padding:30px 10px;color:var(--text3);font-size:12.5px;">'+
-      '<i class="ti ti-chart-arrows" style="font-size:26px;display:block;margin:0 auto 10px;color:var(--line-strong);" aria-hidden="true"></i>'+
-      msg + '</div>';
+  function istoricClient(id){
+    return istoric.filter(x => x.clientId === id).sort((a,b) => String(b.cand||'').localeCompare(String(a.cand||'')));
+  }
+  function ultimaNota(c){
+    const h = istoricClient(c.id).find(x => x.text);
+    return h ? h.text : (c.rezultat || '');
+  }
+  function zileDeLa(iso){
+    const d = new Date(iso);
+    if(isNaN(d.getTime())) return null;
+    return Math.floor((Date.now() - d.getTime()) / 864e5);
+  }
+  function spatiuScurt(c){ return [c.tipSpatiu, c.suprafata].filter(Boolean).join(' · '); }
+
+  function butoaneContact(c){
+    const cifre = L.cifreTelefon(c.telefon);
+    if(!cifre) return '';
+    return '<a class="btn" href="tel:+'+cifre+'" data-stop="1" style="text-decoration:none;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-phone" aria-hidden="true"></i>Sună</a>' +
+      '<a class="btn" href="'+esc(linkWhatsApp(c))+'" target="_blank" rel="noopener" data-stop="1" style="text-decoration:none;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>';
+  }
+  function legaRanduri(container){
+    container.querySelectorAll('[data-stop]').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
+    container.querySelectorAll('[data-fisa]').forEach(el => el.addEventListener('click', () => openClientModal(el.dataset.fisa)));
+    container.querySelectorAll('[data-gata]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); openGataModal(b.dataset.gata, b.dataset.etapa || null); }));
+    container.querySelectorAll('[data-uneste]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); uneste(b.dataset.uneste, b.dataset.vechi); }));
+    container.querySelectorAll('[data-separat]').forEach(b => b.addEventListener('click', e => { e.stopPropagation(); nuEAcelasi(b.dataset.separat); }));
   }
 
-  const DASH_ORDER_KEY = 'beze_dash_layout';
-  const DEFAULT_DASH_ORDER = ['clientiNoi','deSunatAzi','clientiTimp','surse','oferteTimp','oferteEtapa','sarcini','activitate'];
-  const DASH_TITLES = {
-    clientiNoi:'Clienți noi', deSunatAzi:'De sunat azi', clientiTimp:'Clienți adăugați în timp',
-    surse:'Sursa clienților', oferteTimp:'Oferte create în timp',
-    oferteEtapa:'Oferte după etapă', sarcini:'Sarcini restante', activitate:'Activitate recentă'
-  };
-  const DEFAULT_DASH_SIZES = {
-    clientiNoi:{w:320,h:230}, deSunatAzi:{w:340,h:260}, clientiTimp:{w:460,h:300}, surse:{w:460,h:300},
-    oferteTimp:{w:460,h:280}, oferteEtapa:{w:460,h:280}, sarcini:{w:400,h:260}, activitate:{w:400,h:260}
-  };
-  const CARD_CHART_MAP = { clientiTimp:'overTime', surse:'sources', oferteTimp:'dealsTime', oferteEtapa:'dealStage' };
-
-  function loadDashLayout(){
-    try{
-      const raw = localStorage.getItem(DASH_ORDER_KEY);
-      if(raw){
-        const parsed = JSON.parse(raw);
-        const order = (parsed.order||[]).filter(k => DASH_TITLES[k]);
-        DEFAULT_DASH_ORDER.forEach(k => { if(!order.includes(k)) order.push(k); });
-        const sizes = Object.assign({}, DEFAULT_DASH_SIZES, parsed.sizes||{});
-        return { order, hidden: Array.isArray(parsed.hidden) ? parsed.hidden.filter(k=>DASH_TITLES[k]) : [], sizes };
-      }
-    }catch(e){}
-    return { order: DEFAULT_DASH_ORDER.slice(), hidden: [], sizes: Object.assign({}, DEFAULT_DASH_SIZES) };
+  /* ---------- AZI ---------- */
+  function tileAzi(numar, titlu, sub, culoare){
+    return '<div class="card" style="padding:16px 18px;flex:1;min-width:150px;">' +
+      '<div style="font-size:26px;font-weight:600;color:'+(culoare||'var(--text)')+';">'+numar+'</div>' +
+      '<div style="font-size:13px;font-weight:500;margin-top:2px;">'+titlu+'</div>' +
+      '<div style="font-size:12px;color:var(--text3);margin-top:2px;min-height:15px;">'+(sub||'')+'</div></div>';
   }
-  let dashLayout = loadDashLayout();
-  function saveDashLayout(){ try{ localStorage.setItem(DASH_ORDER_KEY, JSON.stringify(dashLayout)); }catch(e){} }
-
-  function dashCardInner(key){
-    const b = rangeBounds();
-    const dealsInRange = deals.filter(d => inRange(d.createdAt, b));
-    const noDeals = dealsInRange.length === 0;
-    if(key==='clientiNoi'){
-      const n = clients.filter(c => inRange(c.addedAt, b)).length;
-      const prev = b.prevStart ? countBetween(clients, 'addedAt', b.prevStart, b.prevEnd) : null;
-      const neSunati = clients.filter(c => !c.contactat && !c.notInterested).length;
-      return cardTitle('Clienți noi') +
-        '<div style="display:flex;gap:6px;margin-bottom:18px;">' + minipill(b.label) + '</div>' +
-        '<div style="text-align:center;padding:10px 0 4px;max-width:260px;margin:0 auto;">' +
-          '<div style="font-size:11px;color:var(--text3);letter-spacing:0.05em;">(NUMĂR) CLIENȚI</div>' +
-          '<div style="font-size:40px;font-weight:600;color:#0d5c56;margin-top:6px;">' + n + '</div>' +
-          (prev!==null ? '<div style="font-size:12px;color:var(--text3);margin-top:4px;">' + b.prevLabel + ': ' + prev + '</div>' : '') +
-          '<div style="font-size:12px;color:var(--warm-text);margin-top:8px;">' + neSunati + (neSunati===1 ? ' client încă nesunat' : ' clienți încă nesunați') + '</div>' +
-        '</div>';
-    }
-    if(key==='deSunatAzi'){
-      const dayDate = new Date(); dayDate.setDate(dayDate.getDate() + todayCardOffset);
-      const dayLabel = todayCardOffset===0 ? 'De sunat azi' : 'De sunat mâine';
-      return '<div style="display:flex;flex-direction:column;height:100%;">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-right:44px;">' +
-          '<div style="display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:500;color:#0d5c56;">'+dayLabel+'<i class="ti ti-info-circle" style="font-size:14px;color:var(--text3);" aria-hidden="true"></i></div>' +
-          '<i id="todayCardToggle" class="ti ti-chevron-right" style="font-size:18px;color:var(--accent-dark);cursor:pointer;" title="'+(todayCardOffset===0?'vezi mâine':'vezi azi')+'" aria-hidden="true"></i>' +
-        '</div>' +
-        minipill(dayDate.toLocaleDateString('ro-RO',{day:'2-digit',month:'2-digit',year:'numeric'})) +
-        '<div id="todayCallsList" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow-y:auto;margin-top:12px;"></div>' +
-      '</div>';
-    }
-    if(key==='clientiTimp') return '<div style="display:flex;flex-direction:column;height:100%;">' +
-      cardTitle('Clienți adăugați în timp (cumulat)') + minipill('Anul acesta, total la sfârșitul fiecărei luni') +
-      '<div style="flex:1;min-height:60px;margin-top:14px;"><canvas id="chartOverTime"></canvas></div>' +
-    '</div>';
-    if(key==='surse') return '<div style="display:flex;flex-direction:column;height:100%;">' +
-      cardTitle('Sursa clienților') + minipill(b.label) +
-      '<div style="display:flex;align-items:center;gap:6px;margin:14px 0 6px;font-size:12px;color:var(--text2);"><span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;"></span>(Număr) Clienți</div>' +
-      '<div style="flex:1;min-height:60px;"><canvas id="chartSources"></canvas></div>' +
-    '</div>';
-    if(key==='oferteTimp') return '<div style="display:flex;flex-direction:column;height:100%;">' +
-      cardTitle('Oferte create în timp') + minipill('Toate, pe luni') +
-      (deals.length===0 ? emptyState('Fără date momentan. După ce adaugi oferte, le vei vedea aici.')
-               : '<div style="flex:1;min-height:60px;margin-top:14px;"><canvas id="chartDealsTime"></canvas></div>') +
-    '</div>';
-    if(key==='oferteEtapa') return cardTitle('Oferte după etapă') +
-      minipill(b.label + ', după data creării') +
-      (noDeals ? emptyState('Nicio ofertă creată în acest interval.')
-               : '<div style="display:flex;gap:20px;align-items:center;margin-top:14px;">' +
-                   '<div style="width:140px;height:140px;flex-shrink:0;"><canvas id="chartDealStage"></canvas></div>' +
-                   '<div style="font-size:12px;">' + dealStageLegend(dealsInRange) +
-                     '<div style="margin-top:10px;color:var(--text3);">valoare câștigată</div><div style="font-size:16px;font-weight:500;color:var(--accent-dark);">' + fmtRon(wonDealsValue(dealsInRange)) + '</div>' +
-                     '<div style="margin-top:8px;color:var(--text3);">valoare activă (în lucru)</div><div style="font-size:16px;font-weight:500;color:var(--text);">' + fmtRon(activeDealsValue(dealsInRange)) + '</div>' +
-                   '</div>' +
-                 '</div>');
-    if(key==='sarcini') return '<div style="display:flex;flex-direction:column;height:100%;">' + cardTitle('Sarcini restante') + '<div id="miniTasks" style="display:flex;flex-direction:column;gap:8px;flex:1;min-height:0;overflow-y:auto;"></div></div>';
-    if(key==='activitate') return cardTitle('Activitate recentă') + '<div id="miniActivity" style="display:flex;flex-direction:column;gap:8px;"></div>';
-    return '';
+  function sectiuneAzi(titlu, icon, continut, gol){
+    return '<div class="card" style="padding:18px 20px;margin-bottom:16px;">' +
+      '<div class="cardhead" style="margin-bottom:10px;"><i class="ti '+icon+'" aria-hidden="true"></i>'+titlu+'</div>' +
+      (continut || '<div style="font-size:13px;color:var(--text3);padding:6px 0;">'+gol+'</div>') + '</div>';
   }
-
-  function dashCardWrapper(key){
-    const size = dashLayout.sizes[key] || DEFAULT_DASH_SIZES[key] || {w:400,h:260};
-    return '<div class="dashcard" data-key="'+key+'" style="position:relative;width:'+size.w+'px;height:'+size.h+'px;min-width:240px;min-height:150px;max-width:100%;resize:both;overflow:hidden;transition:opacity 0.15s;">' +
-      '<div style="position:absolute;top:18px;right:20px;display:flex;gap:10px;z-index:2;">' +
-        '<i class="ti ti-grip-vertical" draggable="true" style="cursor:grab;color:var(--line-strong);font-size:16px;" title="trage pentru a reordona" aria-hidden="true"></i>' +
-        '<i class="ti ti-x" data-hide="'+key+'" style="cursor:pointer;color:var(--text3);font-size:16px;" title="ascunde acest card" aria-hidden="true"></i>' +
-      '</div>' +
-      hcard(dashCardInner(key), 'height:100%;box-sizing:border-box;overflow:auto;') +
-    '</div>';
+  function randAzi(c, stanga, dreapta, butoane){
+    return '<div data-fisa="'+c.id+'" style="display:flex;align-items:center;gap:12px;padding:11px 0;border-top:1px solid var(--line);cursor:pointer;flex-wrap:wrap;">' +
+      '<div style="flex:1;min-width:200px;">'+stanga+'</div>' +
+      (dreapta ? '<div style="font-size:12.5px;white-space:nowrap;">'+dreapta+'</div>' : '') +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;">'+butoane+'</div></div>';
   }
-
-  function dashboardHtml(){
-    const visible = dashLayout.order.filter(k => !dashLayout.hidden.includes(k));
-    const hidden = dashLayout.order.filter(k => dashLayout.hidden.includes(k));
+  function aziHtml(){
+    const A = E.listeAzi(clients, deals, new Date());
+    const k = A.cifre;
+    const azi = new Date().toLocaleDateString('ro-RO', {weekday:'long', day:'numeric', month:'long'});
+    const nesunati = A.nesunati.map(({c}) => randAzi(c,
+      '<div style="font-weight:500;">'+esc(c.nume)+'</div><div style="font-size:12px;color:var(--text2);">'+esc([spatiuScurt(c), c.problema].filter(Boolean).join(' · ') || c.email || '')+'</div>',
+      '<span style="color:'+culoareVechime(c.addedAt)+';font-weight:500;">'+esc(L.vechime(c.addedAt))+'</span>',
+      butoaneContact(c) + '<button class="btn-primary" data-gata="'+c.id+'" style="padding:6px 12px;font-size:12px;">Gata</button>')).join('');
+    const revenit = A.revenit.map(({c, vechi}) => randAzi(c,
+      '<div style="font-weight:500;">'+esc(c.nume)+' <span style="font-size:12px;color:var(--text3);font-weight:400;">a completat din nou formularul, '+esc(L.vechime(c.addedAt))+'</span></div>' +
+      '<div style="font-size:12px;color:var(--text2);">acum: '+esc([spatiuScurt(c), c.problema].filter(Boolean).join(' · ') || '-')+'</div>' +
+      '<div style="font-size:12px;color:var(--text3);">fișa veche: '+esc(vechi.nume)+', adăugat pe '+esc(fmtDate(vechi.addedAt))+' · '+esc(E.etapa(E.etapaClient(vechi, deals)).label)+(ultimaNota(vechi)?' · „'+esc(ultimaNota(vechi).slice(0,60))+'”':'')+'</div>',
+      '',
+      '<button class="btn-primary" data-uneste="'+c.id+'" data-vechi="'+vechi.id+'" style="padding:6px 12px;font-size:12px;">Pune în fișa veche</button>' +
+      '<button class="btn" data-separat="'+c.id+'" style="padding:6px 10px;font-size:12px;">Nu e același om</button>')).join('');
+    const pasi = A.pasi.map(({c, e, p, intarziat}) => randAzi(c,
+      '<div style="font-weight:500;">'+esc(c.nume)+' '+etapaPill(e, true)+'</div><div style="font-size:12px;color:var(--text2);">'+esc(p.ce || 'pas fără descriere')+'</div>',
+      '<span style="color:'+(intarziat?'var(--red)':'var(--text2)')+';font-weight:'+(intarziat?'600':'400')+';">'+(intarziat?'întârziat · ':'')+esc(cand(p.la))+'</span>',
+      butoaneContact(c) + '<button class="btn-primary" data-gata="'+c.id+'" style="padding:6px 12px;font-size:12px;">Gata</button>')).join('');
+    const faraPas = A.faraPas.map(({c, e}) => {
+      const z = zileDeLa(c.etapaLa || c.addedAt);
+      return randAzi(c,
+        '<div style="font-weight:500;">'+esc(c.nume)+' '+etapaPill(e, true)+'</div><div style="font-size:12px;color:var(--text3);">'+(z!==null ? (z===0?'de azi':'de '+z+(z===1?' zi':' zile'))+' în această etapă, fără niciun pas programat' : 'fără niciun pas programat')+'</div>',
+        '', '<button class="btn" data-gata="'+c.id+'" style="padding:6px 12px;font-size:12px;">Alege pasul</button>');
+    }).join('');
     return (
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">' +
-        '<div style="display:flex;align-items:center;gap:9px;">' +
-          '<i class="ti ti-star" style="font-size:17px;color:var(--text3);" aria-hidden="true"></i>' +
-          '<span class="pagetitle" style="font-size:21px;">Privire generală CRM</span>' +
-        '</div>' +
-        '<div style="display:flex;gap:8px;">' +
-          '<button id="dashPasteBtn" class="btn"><i class="ti ti-mail" aria-hidden="true"></i> client din mail</button>' +
-          '<button id="dashAddBtn" class="btn-primary">+ Client nou</button>' +
-        '</div>' +
+      (istoricEroare ? '<div style="background:var(--red-bg);color:var(--red);padding:10px 14px;border-radius:9px;font-size:13px;margin-bottom:14px;">Istoricul nu se poate citi: regulile din Firebase nu sunt încă actualizate pentru istoric.</div>' : '') +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:16px;flex-wrap:wrap;gap:12px;">' +
+        '<div><div class="pagetitle">Azi</div><div class="pagesub">'+esc(azi)+'</div></div>' +
+        '<div style="display:flex;gap:8px;"><button id="aziPaste" class="btn"><i class="ti ti-mail" aria-hidden="true"></i> client din mail</button><button id="aziAdd" class="btn-primary">+ client nou</button></div>' +
       '</div>' +
-
-      '<div style="display:flex;align-items:center;gap:14px;margin-bottom:20px;flex-wrap:wrap;padding-bottom:14px;border-bottom:1px solid var(--line);">' +
-        '<span style="font-size:12.5px;color:var(--text2);">Interval:</span>' +
-        '<select id="rangeSel" class="filt" style="border-radius:16px;">' +
-          '<option value="month"' + (dashRange==='month'?' selected':'') + '>Luna aceasta</option>' +
-          '<option value="30d"' + (dashRange==='30d'?' selected':'') + '>Ultimele 30 zile</option>' +
-          '<option value="all"' + (dashRange==='all'?' selected':'') + '>Tot timpul</option>' +
-        '</select>' +
-        '<span style="font-size:11.5px;color:var(--text3);display:flex;align-items:center;gap:5px;"><i class="ti ti-arrows-move" aria-hidden="true"></i>trage mânerul (☰) ca să reordonezi, colțul din dreapta-jos ca să redimensionezi</span>' +
-        '<button id="resetLayoutBtn" class="btn" style="font-size:11.5px;padding:5px 10px;">resetează aspectul</button>' +
-        '<i class="ti ti-refresh" id="refreshBtn" style="margin-left:auto;font-size:16px;color:var(--text3);cursor:pointer;" aria-hidden="true" title="Reîmprospătează"></i>' +
+      '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;">' +
+        tileAzi(k.nesunati, k.nesunati===1?'client nesunat':'clienți nesunați', k.celMaiVechi ? 'cel mai vechi: '+esc(L.vechime(k.celMaiVechi)) : '', k.nesunati ? culoareVechime(k.celMaiVechi || new Date().toISOString()) : '') +
+        tileAzi(k.pasi, k.pasi===1?'pas azi':'pași azi', k.intarziati ? k.intarziati+' întârziat'+(k.intarziati===1?'':'i') : '', k.intarziati ? 'var(--red)' : '') +
+        tileAzi(k.oferte, k.oferte===1?'ofertă în așteptare':'oferte în așteptare', k.valoareOferte ? esc(fmtRon(k.valoareOferte)) : '') +
+        tileAzi(k.studii, k.studii===1?'studiu săptămâna asta':'studii săptămâna asta', '') +
       '</div>' +
-
-      '<div id="dashCards" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">' +
-        visible.map(dashCardWrapper).join('') +
-      '</div>' +
-
-      (hidden.length
-        ? '<div style="margin-top:18px;font-size:12px;color:var(--text3);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">' +
-            '<span>carduri ascunse:</span>' +
-            hidden.map(k => '<button class="btn" data-show="'+k+'" style="font-size:11px;padding:5px 10px;">+ '+DASH_TITLES[k]+'</button>').join('') +
-          '</div>'
-        : '')
+      sectiuneAzi('De sunat acum', 'ti-phone-call', nesunati, 'Niciun client nou nesunat.') +
+      (A.revenit.length ? sectiuneAzi('Au revenit', 'ti-arrow-back-up', revenit, '') : '') +
+      sectiuneAzi('Pașii de azi', 'ti-clock', pasi, 'Nimic programat pentru azi.') +
+      sectiuneAzi('Rămași fără pas următor', 'ti-alert-triangle', faraPas, 'Toți clienții în lucru au un pas programat.') +
+      '<div style="font-size:12px;color:var(--text3);margin-top:4px;">Aici apar doar clienții veniți din 10 noiembrie încoace. Cei de dinainte sunt în „Clienți”, la arhivă.</div>'
     );
   }
-
-  function activeDealsValue(list){
-    return (list||deals).filter(d => d.etapa!=='client' && d.etapa!=='pierdut').reduce((s,d)=>s+(Number(d.valoare)||0),0);
-  }
-  function wonDealsValue(list){
-    return (list||deals).filter(d => d.etapa==='client').reduce((s,d)=>s+(Number(d.valoare)||0),0);
+  function wireAzi(){
+    document.getElementById('aziAdd').addEventListener('click', () => openClientModal(null));
+    document.getElementById('aziPaste').addEventListener('click', openPasteModal);
+    legaRanduri(document.getElementById('page'));
   }
 
-  function sourceCounts(){
-    const b = rangeBounds();
-    const bySrc = {};
-    clients.filter(c => inRange(c.addedAt, b)).forEach(c => { const s=c.sursa||'Fără sursă'; bySrc[s]=(bySrc[s]||0)+1; });
-    return bySrc;
+  /* ---------- CLIENTUL CARE REVINE ---------- */
+  async function uneste(nouId, vechiId){
+    const n = clients.find(x => x.id === nouId), v = clients.find(x => x.id === vechiId);
+    if(!n || !v) return;
+    if(!isAdmin()){ toast('Doar Beia poate uni fișele.'); return; }
+    const acum = new Date().toISOString();
+    const eVechi = E.etapaClient(v, deals);
+    const etapaNoua = ['asteapta','studiu','oferta'].includes(eVechi) ? eVechi : 'nou';
+    const text = 'A completat din nou formularul: ' + [n.tipSpatiu, n.suprafata, n.problema].filter(Boolean).join(' · ') + (n.mesaj ? '\n' + n.mesaj : '');
+    try{
+      await addDoc(istoricCol, { clientId: v.id, tip: 'formular', text, cand: n.addedAt || acum, cine: auth.currentUser.email, etapaDin: eVechi, etapaIn: etapaNoua });
+      const upd = { reactivat: true, etapa: etapaNoua, updatedAt: acum, pasUrmator: '', pasLa: '', nextCallAt: '', nextCallReason: '', notInterested: false };
+      if(etapaNoua !== eVechi) upd.etapaLa = acum;
+      ['tipSpatiu','suprafata','problema'].forEach(f => { if(n[f]) upd[f] = n[f]; });
+      if(!v.email && n.email) upd.email = n.email;
+      if(!v.telefon && n.telefon) upd.telefon = n.telefon;
+      if(!v.sursa && n.sursa) upd.sursa = n.sursa;
+      await updateDoc(doc(db,'clients',v.id), upd);
+      await deleteDoc(doc(db,'clients',n.id));
+      logActivity('A revenit: ' + v.nume + ' (formularul nou, pus în fișa veche)');
+      toast('Formularul nou e în istoricul lui ' + v.nume + '.');
+    }catch(err){ console.error(err); toast('Nu s-a putut uni: ' + (err.code || 'eroare')); }
+  }
+  async function nuEAcelasi(nouId){
+    try{
+      await updateDoc(doc(db,'clients',nouId), { revenitRespins: true, updatedAt: new Date().toISOString() });
+    }catch(err){ console.error(err); toast('Nu s-a salvat.'); }
   }
 
-  const stageColors = ['#3576c9','#d98e4c','#c94f8f','#3f8f3f','#c0453f'];
-  function dealStageLegend(list){
-    return STAGES.map((s,i) => {
-      const ct = (list||deals).filter(d=>d.etapa===s.key).length;
-      if(!ct) return '';
-      return '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;"><span style="width:8px;height:8px;border-radius:50%;background:'+stageColors[i]+';display:inline-block;"></span><span style="color:var(--text2);">'+s.label+': '+ct+'</span></div>';
-    }).join('');
+  /* ---------- „GATA”: CE S-A ÎNTÂMPLAT, ETAPA, PASUL URMĂTOR ---------- */
+  const PASI_SUGERATI = ['Sună din nou', 'Verifică dacă a trimis pozele și cotele', 'Studiu la fața locului', 'Trimite oferta', 'Sună pentru răspuns la ofertă', 'Trimite recomandarea pe poze'];
+  const PAS_IMPLICIT = {
+    nou: ['Sună din nou', 2/24], contactat: ['Sună din nou', 1], asteapta: ['Verifică dacă a trimis pozele și cotele', 2],
+    studiu: ['Studiu la fața locului', 2], oferta: ['Sună pentru răspuns la ofertă', 3]
+  };
+  function laPeste(zile, faraWeekend){
+    const d = new Date();
+    if(zile < 1){ d.setTime(d.getTime() + zile * 864e5); d.setSeconds(0,0); return d; }
+    d.setDate(d.getDate() + Math.round(zile)); d.setHours(10,0,0,0);
+    // Pașii propuși singuri nu cad sâmbăta sau duminica; butoanele („mâine”, „peste 3 zile”) fac exact ce spun.
+    if(faraWeekend){ while(d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1); }
+    return d;
+  }
+  let gata = null;
+
+  function openGataModal(id, etapaAleasa){
+    const c = clients.find(x => x.id === id);
+    if(!c) return;
+    const eAcum = E.etapaClient(c, deals);
+    gata = { id, eAcum, tip: 'apel', etapa: etapaAleasa || eAcum, atins: !!etapaAleasa };
+    const p = E.pasClient(c);
+    const m = document.getElementById('modal');
+    const chip = (grup, key, label, activ) => '<button type="button" data-grup="'+grup+'" data-key="'+key+'" class="btn" style="padding:6px 11px;font-size:12px;'+(activ?'background:var(--accent);color:#fff;border-color:var(--accent);':'')+'">'+label+'</button>';
+    m.innerHTML =
+      modalHeader('Gata cu ' + esc(c.nume)) +
+      '<div style="font-size:12px;color:var(--text3);margin-bottom:12px;">acum: '+etapaPill(eAcum, true)+(p.la?' · pas: '+esc(p.ce||'')+' · '+esc(cand(p.la)):'')+'</div>' +
+      sectionTitle('Ce s-a întâmplat') +
+      '<div id="gTip" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">' + E.TIPURI_ISTORIC.map(t => chip('tip', t.key, t.label, t.key==='apel')).join('') + '</div>' +
+      '<textarea id="gText" rows="2" placeholder="pe scurt, de exemplu: a zis că trimite poze diseară" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;resize:vertical;font-family:inherit;"></textarea>' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px;">' + ['Nu a răspuns','Trimite poze și cote','Vrea studiul la fața locului','Vrea ofertă','Nu mai e interesat'].map(t => '<button type="button" class="btn" data-text="'+esc(t)+'" style="padding:4px 9px;font-size:11.5px;">'+t+'</button>').join('') + '</div>' +
+      sectionTitle('Etapa') +
+      '<div id="gEtapa" style="display:flex;gap:6px;flex-wrap:wrap;">' + E.ETAPE.map(e => chip('etapa', e.key, e.label, e.key===gata.etapa)).join('') + '</div>' +
+      '<div id="gMotivBox" style="display:none;margin-top:10px;">' + selectRow('Motivul pierderii','gMotiv', E.MOTIVE, c.motivPierdere||'') + '</div>' +
+      '<div id="gValoareBox" style="display:none;margin-top:10px;">' + inputRow('Valoarea ofertei (lei)','gValoare', E.valoareClient(c, deals) || '', 'de exemplu 18000') + '</div>' +
+      '<div id="gPasBox">' + sectionTitle('Pasul următor') +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+          '<div style="flex:2;min-width:200px;"><input id="gPasCe" list="gPasi" placeholder="ce urmează" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;"><datalist id="gPasi">'+PASI_SUGERATI.map(x=>'<option value="'+esc(x)+'">').join('')+'</datalist></div>' +
+          '<div style="flex:1;min-width:170px;"><input id="gPasLa" type="datetime-local" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;"></div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">' +
+          [['peste 2 ore', 2/24], ['mâine 10:00', 1], ['peste 3 zile', 3], ['peste o săptămână', 7]].map(([t, z]) => '<button type="button" class="btn" data-peste="'+z+'" style="padding:4px 9px;font-size:11.5px;">'+t+'</button>').join('') +
+          '<button type="button" class="btn" id="gFaraPas" style="padding:4px 9px;font-size:11.5px;">fără pas</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:10px;"></div>' +
+      '<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;"><button id="cancelBtn" class="btn">anulează</button><button id="gSave" class="btn-primary">salvează</button></div>';
+    document.getElementById('modalWrap').style.display = 'flex';
+    m.scrollTop = 0;
+    document.getElementById('closeModal').onclick = closeModal;
+    document.getElementById('cancelBtn').onclick = closeModal;
+    const pasCe = document.getElementById('gPasCe'), pasLa = document.getElementById('gPasLa');
+    function puneImplicit(){
+      const d = PAS_IMPLICIT[gata.etapa];
+      if(!d) return;
+      pasCe.value = d[0];
+      pasLa.value = toDatetimeLocal(laPeste(d[1], true).toISOString());
+    }
+    function arataEtapa(){
+      const finala = gata.etapa === 'castigat' || gata.etapa === 'pierdut';
+      document.getElementById('gMotivBox').style.display = gata.etapa === 'pierdut' ? 'block' : 'none';
+      document.getElementById('gValoareBox').style.display = (gata.etapa === 'oferta' || gata.etapa === 'castigat') ? 'block' : 'none';
+      document.getElementById('gPasBox').style.display = finala ? 'none' : 'block';
+      m.querySelectorAll('[data-grup="etapa"]').forEach(b => {
+        const on = b.dataset.key === gata.etapa;
+        b.style.background = on ? 'var(--accent)' : '#fff'; b.style.color = on ? '#fff' : 'var(--text2)'; b.style.borderColor = on ? 'var(--accent)' : 'var(--line-strong)';
+      });
+    }
+    // Pasul de acum rămâne dacă nu se schimbă etapa; altfel se propune unul potrivit etapei noi.
+    if(gata.atins || !p.la){ puneImplicit(); } else { pasCe.value = p.ce || ''; pasLa.value = toDatetimeLocal(p.la); }
+    arataEtapa();
+    m.querySelectorAll('[data-grup="tip"]').forEach(b => b.addEventListener('click', () => {
+      gata.tip = b.dataset.key;
+      m.querySelectorAll('[data-grup="tip"]').forEach(x => { const on = x === b; x.style.background = on ? 'var(--accent)' : '#fff'; x.style.color = on ? '#fff' : 'var(--text2)'; x.style.borderColor = on ? 'var(--accent)' : 'var(--line-strong)'; });
+    }));
+    m.querySelectorAll('[data-grup="etapa"]').forEach(b => b.addEventListener('click', () => { gata.etapa = b.dataset.key; puneImplicit(); arataEtapa(); }));
+    m.querySelectorAll('[data-text]').forEach(b => b.addEventListener('click', () => {
+      const t = document.getElementById('gText');
+      t.value = t.value ? t.value.replace(/\s*$/, '') + '. ' + b.dataset.text : b.dataset.text;
+      if(b.dataset.text === 'Nu mai e interesat'){ gata.etapa = 'pierdut'; arataEtapa(); }
+      if(b.dataset.text === 'Trimite poze și cote' && gata.etapa === E.etapaClient(c, deals) && ['nou','contactat'].includes(gata.etapa)){ gata.etapa = 'asteapta'; puneImplicit(); arataEtapa(); }
+    }));
+    m.querySelectorAll('[data-peste]').forEach(b => b.addEventListener('click', () => { pasLa.value = toDatetimeLocal(laPeste(parseFloat(b.dataset.peste)).toISOString()); if(!pasCe.value) puneImplicit(); }));
+    document.getElementById('gFaraPas').addEventListener('click', () => { pasCe.value = ''; pasLa.value = ''; });
+    document.getElementById('gSave').onclick = salveazaGata;
   }
 
-  function wireDashCardDrag(){
-    const container = document.getElementById('dashCards');
-    if(!container) return;
-    let draggedKey = null;
-    container.querySelectorAll('.dashcard').forEach(card => {
-      const grip = card.querySelector('.ti-grip-vertical');
-      if(grip){
-        grip.addEventListener('dragstart', (e) => { draggedKey = card.dataset.key; card.style.opacity = '0.4'; e.dataTransfer.effectAllowed = 'move'; });
-        grip.addEventListener('dragend', () => { card.style.opacity = '1'; });
+  async function salveazaGata(){
+    const c = clients.find(x => x.id === gata.id);
+    if(!c) return;
+    const acum = new Date().toISOString();
+    const text = val('gText');
+    const finala = gata.etapa === 'castigat' || gata.etapa === 'pierdut';
+    const pasCe = finala ? '' : val('gPasCe');
+    const pasLaLocal = finala ? '' : document.getElementById('gPasLa').value;
+    if(!finala && pasCe && !pasLaLocal){ formError('alege și când (data și ora), sau apasă „fără pas”'); return; }
+    if(!finala && !pasLaLocal && !confirm('Nu ai programat un pas următor. Clientul va apărea la „Rămași fără pas următor”. Salvez așa?')) return;
+    if(gata.etapa === 'pierdut' && !val('gMotiv')){ formError('alege motivul pierderii'); return; }
+    const schimbata = gata.etapa !== gata.eAcum;
+    const upd = {
+      etapa: gata.etapa,
+      pasUrmator: pasLaLocal ? (pasCe || 'Pas') : '',
+      pasLa: pasLaLocal ? new Date(pasLaLocal).toISOString() : '',
+      nextCallAt: '', nextCallReason: '',
+      contactat: gata.etapa !== 'nou' || !!c.contactat || gata.tip !== 'nota',
+      notInterested: gata.etapa === 'pierdut',
+      updatedAt: acum
+    };
+    if(schimbata){ upd.etapaLa = acum; }
+    if(gata.etapa !== 'pierdut') upd.etapaMax = Math.max(E.etapaMaxima(c, deals), E.indexEtapa(gata.etapa));
+    if(gata.etapa === 'pierdut'){ upd.motivPierdere = val('gMotiv'); if(schimbata) upd.etapaPierdere = gata.eAcum; }
+    if(gata.etapa === 'oferta' || gata.etapa === 'castigat'){ const v = parseFloat(val('gValoare')); if(!isNaN(v)) upd.valoare = v; }
+    if(!c.primulContactLa && gata.tip !== 'nota') upd.primulContactLa = acum;
+    if(!E.inLucru(c)) upd.reactivat = true;
+    const btn = document.getElementById('gSave');
+    btn.disabled = true;
+    try{
+      if(text || schimbata || gata.tip !== 'nota'){
+        await addDoc(istoricCol, { clientId: c.id, tip: gata.tip, text, cand: acum, cine: auth.currentUser.email, etapaDin: gata.eAcum, etapaIn: gata.etapa });
       }
-      card.addEventListener('dragover', (e) => { e.preventDefault(); card.style.outline = '2px solid var(--accent)'; });
-      card.addEventListener('dragleave', () => { card.style.outline = ''; });
-      card.addEventListener('drop', (e) => {
-        e.preventDefault();
-        card.style.outline = '';
-        const targetKey = card.dataset.key;
-        if(!draggedKey || draggedKey===targetKey) return;
-        const order = dashLayout.order.filter(k => k!==draggedKey);
-        const idx = order.indexOf(targetKey);
-        order.splice(idx, 0, draggedKey);
-        dashLayout.order = order;
-        saveDashLayout();
-        renderPage();
-      });
-      const hideBtn = card.querySelector('[data-hide]');
-      if(hideBtn) hideBtn.addEventListener('click', () => {
-        dashLayout.hidden = Array.from(new Set([...dashLayout.hidden, hideBtn.dataset.hide]));
-        saveDashLayout();
-        renderPage();
-      });
+      await updateDoc(doc(db,'clients',c.id), upd);
+      logActivity(c.nume + ': ' + E.etapa(gata.etapa).label + (upd.pasLa ? ', următorul pas ' + cand(upd.pasLa) : ''));
+      closeModal();
+    }catch(err){
+      console.error(err);
+      btn.disabled = false;
+      formError('Nu s-a salvat: ' + (err && err.code === 'permission-denied' ? 'regulile din Firebase nu permit încă istoricul.' : 'verifică internetul și încearcă din nou.'));
+    }
+  }
+
+  /* ---------- ETAPE (TABLA) ---------- */
+  function etapeHtml(){
+    const lucru = clients.filter(c => E.inLucru(c) && !E.fisaVeche(c, clients));
+    const pe = k => lucru.filter(c => E.etapaClient(c, deals) === k);
+    const coloana = k => {
+      const lista = pe(k).sort((a,b) => String(E.pasClient(a).la || 'z').localeCompare(String(E.pasClient(b).la || 'z')));
+      const suma = lista.reduce((s,c) => s + E.valoareClient(c, deals), 0);
+      return '<div class="coloana" data-etapa="'+k+'" style="background:#efeee8;border-radius:12px;padding:10px;min-height:120px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">'+etapaPill(k)+'<span style="font-size:12px;color:var(--text3);">'+lista.length+(suma?' · '+esc(fmtRon(suma)):'')+'</span></div>' +
+        lista.map(c => {
+          const p = E.pasClient(c), intarziat = p.la && new Date(p.la) < new Date(), v = E.valoareClient(c, deals);
+          return '<div class="card" draggable="true" data-card="'+c.id+'" data-fisa="'+c.id+'" style="padding:11px 12px;margin-bottom:8px;cursor:grab;border-radius:10px;">' +
+            '<div style="font-size:13px;font-weight:500;">'+esc(c.nume)+'</div>' +
+            (spatiuScurt(c) ? '<div style="font-size:11.5px;color:var(--text2);margin-top:2px;">'+esc(spatiuScurt(c))+'</div>' : '') +
+            (c.problema ? '<div style="font-size:11.5px;color:var(--text3);">'+esc(c.problema)+'</div>' : '') +
+            (v ? '<div class="mono" style="font-size:12px;color:var(--accent-dark);margin-top:4px;">'+esc(fmtRon(v))+'</div>' : '') +
+            '<div style="font-size:11.5px;margin-top:6px;color:'+(intarziat?'var(--red)':(p.la?'var(--text2)':'var(--warm-text)'))+';">'+(p.la ? '→ '+esc(p.ce||'pas')+' · '+esc(cand(p.la)) : 'fără pas următor')+'</div>' +
+          '</div>';
+        }).join('') + '</div>';
+    };
+    const castigati = pe('castigat'), pierduti = pe('pierdut');
+    const sumaC = castigati.reduce((s,c) => s + E.valoareClient(c, deals), 0);
+    const mic = c => '<div data-fisa="'+c.id+'" style="font-size:12.5px;padding:6px 0;border-top:1px solid var(--line);cursor:pointer;">'+esc(c.nume)+'<span style="color:var(--text3);"> · '+esc(c.etapa==='pierdut' ? (c.motivPierdere||'') : (E.valoareClient(c, deals) ? fmtRon(E.valoareClient(c, deals)) : ''))+'</span></div>';
+    return (
+      '<div style="margin-bottom:18px;"><div class="pagetitle">Etape</div><div class="pagesub">clienții în lucru · trage o fișă în altă coloană ca să schimbi etapa</div></div>' +
+      '<div class="dealsboard" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:start;">' + E.ACTIVE.map(coloana).join('') + '</div>' +
+      '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:18px;">' +
+        '<div class="card" style="flex:1;min-width:260px;padding:16px 18px;"><div class="cardhead" style="margin-bottom:6px;">'+etapaPill('castigat')+'<span style="font-size:12px;color:var(--text3);font-weight:400;">'+castigati.length+(sumaC?' · '+esc(fmtRon(sumaC)):'')+'</span></div>'+(castigati.map(mic).join('') || '<div style="font-size:12.5px;color:var(--text3);">încă niciunul</div>')+'</div>' +
+        '<div class="card" style="flex:1;min-width:260px;padding:16px 18px;"><div class="cardhead" style="margin-bottom:6px;">'+etapaPill('pierdut')+'<span style="font-size:12px;color:var(--text3);font-weight:400;">'+pierduti.length+'</span></div>'+(pierduti.map(mic).join('') || '<div style="font-size:12.5px;color:var(--text3);">încă niciunul</div>')+'</div>' +
+      '</div>'
+    );
+  }
+  function wireEtape(){
+    const page = document.getElementById('page');
+    legaRanduri(page);
+    let tras = null;
+    page.querySelectorAll('[data-card]').forEach(card => {
+      card.addEventListener('dragstart', e => { tras = card.dataset.card; card.style.opacity = '0.4'; e.dataTransfer.effectAllowed = 'move'; });
+      card.addEventListener('dragend', () => { card.style.opacity = '1'; });
     });
-    document.querySelectorAll('[data-show]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        dashLayout.hidden = dashLayout.hidden.filter(k => k!==btn.dataset.show);
-        saveDashLayout();
-        renderPage();
+    page.querySelectorAll('.coloana').forEach(col => {
+      col.addEventListener('dragover', e => { e.preventDefault(); col.style.outline = '2px solid var(--accent)'; });
+      col.addEventListener('dragleave', () => { col.style.outline = ''; });
+      col.addEventListener('drop', e => {
+        e.preventDefault(); col.style.outline = '';
+        const c = clients.find(x => x.id === tras); tras = null;
+        if(c && E.etapaClient(c, deals) !== col.dataset.etapa) openGataModal(c.id, col.dataset.etapa);
       });
-    });
-    const resetBtn = document.getElementById('resetLayoutBtn');
-    if(resetBtn) resetBtn.addEventListener('click', () => {
-      dashLayout = { order: DEFAULT_DASH_ORDER.slice(), hidden: [], sizes: Object.assign({}, DEFAULT_DASH_SIZES) };
-      saveDashLayout();
-      renderPage();
     });
   }
 
-  function wireDashCardResize(){
-    const container = document.getElementById('dashCards');
-    if(!container || typeof ResizeObserver === 'undefined') return;
-    if(dashResizeObserver) dashResizeObserver.disconnect();
-    dashResizeObserver = new ResizeObserver(entries => {
-      let changed = false;
-      entries.forEach(entry => {
-        const card = entry.target;
-        const key = card.dataset.key;
-        if(!key) return;
-        const w = Math.round(entry.contentRect.width);
-        const h = Math.round(entry.contentRect.height);
-        if(key === resizingKey){
-          dashLayout.sizes[key] = { w, h };
-          changed = true;
-        }
-        const chartKey = CARD_CHART_MAP[key];
-        if(chartKey && charts[chartKey]) charts[chartKey].resize();
-      });
-      if(changed) saveDashLayout();
-    });
-    container.querySelectorAll('.dashcard').forEach(card => dashResizeObserver.observe(card));
+  /* ---------- RAPOARTE ---------- */
+  let raportInterval = 'start';
+  function intervalRaport(){
+    const n = new Date();
+    if(raportInterval === '30') return { start: new Date(n.getTime() - 30*864e5), end: null, label: 'ultimele 30 de zile' };
+    if(raportInterval === 'luna') return { start: new Date(n.getFullYear(), n.getMonth(), 1), end: null, label: 'luna aceasta' };
+    if(raportInterval === 'lunaTrecuta') return { start: new Date(n.getFullYear(), n.getMonth()-1, 1), end: new Date(n.getFullYear(), n.getMonth(), 1), label: 'luna trecută' };
+    if(raportInterval === 'tot') return { start: null, end: null, label: 'tot timpul' };
+    return { start: new Date(E.DATA_START), end: null, label: 'din 10 noiembrie' };
   }
-
-  function wireDashboard(){
-    document.getElementById('dashAddBtn').addEventListener('click', () => openClientModal(null));
-    document.getElementById('dashPasteBtn').addEventListener('click', openPasteModal);
-    document.getElementById('rangeSel').addEventListener('change', e => { dashRange = e.target.value; renderPage(); });
-    document.getElementById('refreshBtn').addEventListener('click', () => renderPage());
-    wireDashCardDrag();
-    wireDashCardResize();
-    const dashedGrid = { color:'#eceae1', borderDash:[3,3] };
-
+  function fmtOre(h){
+    if(h === null) return '-';
+    if(h < 1) return Math.round(h*60) + ' min';
+    if(h < 48) return (Math.round(h*10)/10).toLocaleString('ro-RO') + ' ore';
+    return Math.round(h/24) + ' zile';
+  }
+  function rapoarteHtml(){
+    const I = intervalRaport();
+    const drum = E.drumulClientilor(clients, deals, I);
+    const total = drum[0].n || 0;
+    const cer = E.ceCerClientii(clients, I);
+    const v = E.vitezaRaspuns(clients, I);
+    const r = E.rezultate(clients, deals, I);
+    const opt = [['start','din 10 noiembrie'],['30','ultimele 30 de zile'],['luna','luna aceasta'],['lunaTrecuta','luna trecută'],['tot','tot timpul']];
+    const card = (titlu, intrebare, corp) => '<div class="card" style="padding:20px 22px;margin-bottom:16px;"><div class="cardhead" style="margin-bottom:2px;">'+titlu+'</div><div style="font-size:12.5px;color:var(--text3);margin-bottom:14px;">'+intrebare+'</div>'+corp+'</div>';
+    const drumHtml = total ? drum.map(d => {
+      const p = total ? d.n / total : 0;
+      return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:7px;">' +
+        '<div style="width:170px;font-size:12.5px;color:var(--text2);flex-shrink:0;">'+esc(d.label)+'</div>' +
+        '<div style="flex:1;background:#efeee8;border-radius:6px;height:22px;position:relative;"><div style="width:'+Math.max(p*100, d.n?2:0)+'%;background:'+(d.key==='castigat'?'#3f8f3f':'#1f8f72')+';height:100%;border-radius:6px;"></div></div>' +
+        '<div style="width:90px;text-align:right;font-size:12.5px;"><b>'+d.n+'</b> <span style="color:var(--text3);">('+Math.round(p*100)+'%)</span></div></div>';
+    }).join('') : '<div style="font-size:13px;color:var(--text3);">Niciun client în acest interval.</div>';
+    const maxCel = Math.max(1, ...cer.randuri.flatMap(rr => cer.coloane.map(cc => (cer.matrice[rr]||{})[cc] || 0)));
+    const cerHtml = cer.randuri.length ? '<div style="overflow-x:auto;"><table style="border-collapse:collapse;width:100%;"><thead><tr><th style="padding:8px;"></th>' + cer.coloane.map(cc => '<th style="padding:8px;font-size:11px;text-transform:none;letter-spacing:0;">'+esc(cc)+'</th>').join('') + '</tr></thead><tbody>' +
+      cer.randuri.map(rr => '<tr><td style="padding:8px;font-size:12.5px;white-space:nowrap;">'+esc(rr)+'</td>' + cer.coloane.map(cc => { const n = (cer.matrice[rr]||{})[cc] || 0; return '<td style="padding:8px;text-align:center;font-size:13px;background:rgba(31,143,114,'+(n ? 0.12 + 0.6*n/maxCel : 0)+');">'+(n||'')+'</td>'; }).join('') + '</tr>').join('') + '</tbody></table></div>'
+      : '<div style="font-size:13px;color:var(--text3);">Niciun client în acest interval.</div>';
+    const vitHtml = v.masurati ?
+      '<div style="display:flex;gap:28px;flex-wrap:wrap;align-items:flex-end;">' +
+        '<div><div style="font-size:30px;font-weight:600;color:#0d5c56;">'+fmtOre(v.mediana)+'</div><div style="font-size:12px;color:var(--text3);">timpul tipic până la primul contact</div></div>' +
+        '<div style="font-size:13px;line-height:1.7;">în prima oră: <b>'+v.subOOra+'</b> din '+v.masurati+'<br>în prima zi: <b>'+v.subOZi+'</b> din '+v.masurati+(v.nesunati?'<br><span style="color:var(--warm-text);">încă nesunați: <b>'+v.nesunati+'</b></span>':'')+'</div>' +
+      '</div>'
+      : '<div style="font-size:13px;color:var(--text3);">Se măsoară de acum înainte: de fiecare dată când apeși „Gata” la un client nou, CRM-ul notează cât a trecut de la formular.'+(v.nesunati?' Încă nesunați: <b>'+v.nesunati+'</b>.':'')+'</div>';
+    const motive = Object.entries(r.motive).sort((a,b) => b[1]-a[1]);
+    const rezHtml = '<div style="display:flex;gap:28px;flex-wrap:wrap;margin-bottom:12px;">' +
+        '<div><div style="font-size:22px;font-weight:600;">'+r.cuOferta+'</div><div style="font-size:12px;color:var(--text3);">oferte trimise'+(r.valOferte?' · '+esc(fmtRon(r.valOferte)):'')+'</div></div>' +
+        '<div><div style="font-size:22px;font-weight:600;color:#3f8f3f;">'+r.castigati+'</div><div style="font-size:12px;color:var(--text3);">câștigați'+(r.valCastigat?' · '+esc(fmtRon(r.valCastigat)):'')+'</div></div>' +
+        '<div><div style="font-size:22px;font-weight:600;">'+(r.rataCastig===null?'-':Math.round(r.rataCastig*100)+'%')+'</div><div style="font-size:12px;color:var(--text3);">din ofertele încheiate, câștigate</div></div>' +
+      '</div>' +
+      (motive.length ? '<div style="font-size:12.5px;color:var(--text2);margin-bottom:4px;">De ce s-au pierdut:</div>' + motive.map(([mm, n]) => '<div style="font-size:13px;padding:3px 0;">'+esc(mm)+': <b>'+n+'</b></div>').join('') : '<div style="font-size:13px;color:var(--text3);">Niciun client pierdut în acest interval.</div>');
+    return (
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:18px;flex-wrap:wrap;gap:12px;">' +
+        '<div><div class="pagetitle">Rapoarte</div><div class="pagesub">o privire pe săptămână: ce merge și unde se pierd clienții</div></div>' +
+        '<select id="raportInterval" class="filt">' + opt.map(([k,l]) => '<option value="'+k+'"'+(k===raportInterval?' selected':'')+'>'+l+'</option>').join('') + '</select>' +
+      '</div>' +
+      card('Lead-uri pe săptămână, pe surse', 'Când merg reclamele și când nu (ultimele 12 săptămâni, indiferent de interval).', '<div style="height:240px;"><canvas id="chartSaptamani"></canvas></div>') +
+      card('Drumul clienților', 'Din clienții veniți '+esc(I.label)+', câți au ajuns cel puțin până la fiecare etapă (cei pierduți se numără până la etapa la care s-au oprit).', drumHtml) +
+      card('Ce cer clienții', 'Tipul spațiului și problema, pentru clienții veniți '+esc(I.label)+'.', cerHtml) +
+      card('Cât de repede răspunzi', 'De la formular până la primul apel sau mesaj, pentru clienții veniți '+esc(I.label)+'.', vitHtml) +
+      card('Oferte, câștiguri, pierderi', 'Pentru clienții veniți '+esc(I.label)+'.', rezHtml) +
+      '<div style="font-size:12px;color:var(--text3);">La clienții de dinainte de 10 noiembrie, etapa e dedusă din fișele vechi (contactat, neinteresat, oferte).</div>'
+    );
+  }
+  function wireRapoarte(){
+    document.getElementById('raportInterval').addEventListener('change', e => { raportInterval = e.target.value; renderPage(); });
     try{
       if(typeof Chart === 'undefined') throw new Error('Chart.js nu s-a încărcat');
-
-      if(document.getElementById('chartOverTime')){
-        const now = new Date();
-        const year = now.getFullYear();
-        let running = clients.filter(c => new Date(c.addedAt).getFullYear() < year).length;
-        const cumLabels = [], cumData = [];
-        for(let m=0; m<=now.getMonth(); m++){
-          const countThisMonth = clients.filter(c => { const d=new Date(c.addedAt); return d.getFullYear()===year && d.getMonth()===m; }).length;
-          running += countThisMonth;
-          cumLabels.push(monthLabel(year+'-'+String(m+1).padStart(2,'0')));
-          cumData.push(running);
-        }
-        charts.overTime = new Chart(document.getElementById('chartOverTime'), {
-          type:'line',
-          data:{ labels: cumLabels, datasets:[{ data: cumData, borderColor:'#1f8f72', backgroundColor:'rgba(31,143,114,0.1)', fill:true, tension:0.2, pointRadius:3, pointBackgroundColor:'#1f8f72' }] },
-          options:{ plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, ticks:{precision:0, font:{size:11}}, grid:dashedGrid }, x:{ grid:{display:false}, ticks:{font:{size:11}} } }, responsive:true, maintainAspectRatio:false }
-        });
-      }
-
-      if(document.getElementById('chartSources')){
-        const bySrc = sourceCounts();
-        const sk = Object.keys(bySrc);
-        charts.sources = new Chart(document.getElementById('chartSources'), {
-          type:'bar',
-          data:{ labels: sk, datasets:[{ label:'Clienți', data: sk.map(k=>bySrc[k]), backgroundColor:'#1f8f72', borderRadius:0, maxBarThickness:60 }] },
-          options:{ plugins:{legend:{display:false}}, scales:{
-            y:{ beginAtZero:true, ticks:{precision:0, font:{size:11}}, grid:dashedGrid, title:{display:true, text:'(Număr) Clienți', font:{size:11}} },
-            x:{ grid:{display:false}, ticks:{font:{size:11}}, title:{display:true, text:'Sursă', font:{size:11}} }
-          }, responsive:true, maintainAspectRatio:false }
-        });
-      }
-
-      if(deals.length){
-        if(document.getElementById('chartDealsTime')){
-          const byDealMonth = {};
-          deals.forEach(d => { const k=monthKey(d.createdAt); byDealMonth[k]=(byDealMonth[k]||0)+1; });
-          const dmk = Object.keys(byDealMonth).sort();
-          charts.dealsTime = new Chart(document.getElementById('chartDealsTime'), {
-            type:'line',
-            data:{ labels: dmk.map(monthLabel), datasets:[{ data: dmk.map(k=>byDealMonth[k]), borderColor:'#3576c9', backgroundColor:'rgba(53,118,201,0.1)', fill:true, tension:0.2, pointRadius:3 }] },
-            options:{ plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true,ticks:{precision:0,font:{size:11}}, grid:dashedGrid}, x:{grid:{display:false}, ticks:{font:{size:11}}} }, responsive:true, maintainAspectRatio:false }
-          });
-        }
-        if(document.getElementById('chartDealStage')){
-          const dr = deals.filter(d => inRange(d.createdAt, rangeBounds()));
-          const stageCounts = STAGES.map(s => dr.filter(d=>d.etapa===s.key).length);
-          charts.dealStage = new Chart(document.getElementById('chartDealStage'), {
-            type:'doughnut',
-            data:{ labels: STAGES.map(s=>s.label), datasets:[{ data: stageCounts, backgroundColor: stageColors, borderWidth:0 }] },
-            options:{ plugins:{legend:{display:false}}, responsive:true, maintainAspectRatio:false, cutout:'65%' }
-          });
-        }
-      }
-    }catch(err){
-      console.error('Eroare la desenarea graficelor:', err);
-    }
-
-    const todayList = document.getElementById('todayCallsList');
-    if(todayList){
-      const todays = clients.filter(c => !c.notInterested && isOnDay(c.nextCallAt, todayCardOffset)).sort((a,b)=>(a.nextCallAt||'').localeCompare(b.nextCallAt||''));
-      if(todays.length===0){ todayList.innerHTML = '<div style="font-size:12px;color:var(--text3);">niciun apel programat '+(todayCardOffset===0?'azi':'mâine')+'</div>'; }
-      todays.forEach(c => {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:10px;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);';
-        const timeStr = new Date(c.nextCallAt).toLocaleTimeString('ro-RO', {hour:'2-digit', minute:'2-digit'});
-
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.style.cssText = 'width:16px;height:16px;accent-color:var(--accent);flex-shrink:0;cursor:pointer;';
-        cb.title = 'am luat legătura — marchează ca rezolvat';
-        cb.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          await updateDoc(doc(db,'clients',c.id), { contactat:true, nextCallAt:'', nextCallReason:'', updatedAt:new Date().toISOString() });
-          logActivity('Marcat ca și contactat: '+c.nume);
-        });
-
-        const info = document.createElement('div');
-        info.style.cssText = 'flex:1;min-width:0;cursor:pointer;';
-        info.innerHTML =
-          '<div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nume)+'</div>' +
-          (c.nextCallReason ? '<div style="color:var(--text3);font-size:11px;">'+esc(c.nextCallReason)+'</div>' : '');
-        info.addEventListener('click', () => openClientModal(c.id));
-
-        const timeEl = document.createElement('div');
-        timeEl.style.cssText = 'color:var(--warm-text);font-weight:500;white-space:nowrap;';
-        timeEl.textContent = timeStr;
-
-        row.appendChild(cb);
-        row.appendChild(info);
-        row.appendChild(timeEl);
-        todayList.appendChild(row);
+      const S = E.leadPeSaptamani(clients, new Date(), 12);
+      const culori = ['#1f8f72','#3576c9','#d98e4c','#c94f8f','#7a4fc9','#3f8f3f','#98978a','#c0453f'];
+      charts.saptamani = new Chart(document.getElementById('chartSaptamani'), {
+        type: 'bar',
+        data: {
+          labels: S.saptamani.map(w => w.start.toLocaleDateString('ro-RO', {day:'2-digit', month:'2-digit'})),
+          datasets: S.surse.map((s, i) => ({ label: s, data: S.saptamani.map(w => w.surse[s] || 0), backgroundColor: culori[i % culori.length], maxBarThickness: 40 }))
+        },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } } },
+          scales: { x: { stacked: true, grid: { display: false }, ticks: { font: { size: 11 } } }, y: { stacked: true, beginAtZero: true, ticks: { precision: 0, font: { size: 11 } }, grid: { color: '#eceae1' } } } }
       });
-    }
-    const todayToggle = document.getElementById('todayCardToggle');
-    if(todayToggle) todayToggle.addEventListener('click', () => { todayCardOffset = todayCardOffset===0 ? 1 : 0; renderPage(); });
-
-    const miniTasks = document.getElementById('miniTasks');
-    if(miniTasks){
-      const pendingTasks = getTasks();
-      if(pendingTasks.length===0){ miniTasks.innerHTML = '<div style="font-size:12px;color:var(--text3);">nimic restant</div>'; }
-      pendingTasks.forEach(t => {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;justify-content:space-between;font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);';
-        row.innerHTML = '<span>'+esc(t.label)+'</span><span style="color:var(--text3);">'+esc(t.sub)+'</span>';
-        miniTasks.appendChild(row);
-      });
-    }
-
-    const miniAct = document.getElementById('miniActivity');
-    if(miniAct){
-      const recentAct = activity.slice().sort((a,b)=>(b.ts||'').localeCompare(a.ts||'')).slice(0,4);
-      if(recentAct.length===0){ miniAct.innerHTML = '<div style="font-size:12px;color:var(--text3);">nicio activitate încă</div>'; }
-      recentAct.forEach(a => {
-        const row = document.createElement('div');
-        row.style.cssText = 'font-size:12.5px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--text2);';
-        row.innerHTML = esc(a.text) + '<div style="font-size:11px;color:var(--text3);margin-top:1px;">'+fmtDateTime(a.ts)+'</div>';
-        miniAct.appendChild(row);
-      });
-    }
-  }
-
-  function monthFilterOptions(){
-    const names = ['ianuarie','februarie','martie','aprilie','mai','iunie','iulie','august','septembrie','octombrie','noiembrie','decembrie'];
-    const keys = Array.from(new Set(clients.map(c=>monthKey(c.addedAt)))).sort().reverse();
-    return keys.map(k => {
-      const [y,m] = k.split('-');
-      const label = names[parseInt(m,10)-1] + ' ' + y;
-      return '<option value="'+k+'">'+label.charAt(0).toUpperCase()+label.slice(1)+'</option>';
-    }).join('');
+    }catch(err){ console.error('Eroare la grafic:', err); }
   }
 
   /* ---------- GHID CONSULTANȚĂ ---------- */
@@ -865,13 +837,13 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   function todayStr(){ const n=new Date(); return dateStr(n.getFullYear(), n.getMonth(), n.getDate()); }
 
   function itemsForDay(ds){
-    const calls = clients.filter(c => !c.notInterested && c.nextCallAt && c.nextCallAt.slice(0,10)===ds)
-      .map(c => ({ type:'call', time: new Date(c.nextCallAt).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}), label:'Sună pe '+c.nume, sub:c.nextCallReason||'', refId:c.id }));
-    const followUps = deals.filter(d => d.followUp===ds)
-      .map(d => ({ type:'deal', time:'', label:'Follow-up ofertă — '+d.clientNume, sub:'', refId:d.id }));
+    const pasi = clients.filter(c => E.inLucru(c) && E.ACTIVE.includes(E.etapaClient(c, deals)))
+      .map(c => ({ c, p: E.pasClient(c) }))
+      .filter(({p}) => p.la && toDatetimeLocal(p.la).slice(0,10) === ds)
+      .map(({c, p}) => ({ type:'call', time: new Date(p.la).toLocaleTimeString('ro-RO',{hour:'2-digit',minute:'2-digit'}), label: (p.ce || 'Pas') + ': ' + c.nume, sub: E.etapa(E.etapaClient(c, deals)).label, refId:c.id }));
     const custom = events.filter(e => e.date===ds)
       .map(e => ({ type:'event', time:e.time||'', label:e.title, sub:e.notes||'', refId:e.id }));
-    return [...calls, ...followUps, ...custom].sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+    return [...pasi, ...custom].sort((a,b)=>(a.time||'').localeCompare(b.time||''));
   }
 
   function calendarHtml(){
@@ -1019,46 +991,60 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   }
 
   /* ---------- CLIENTI ---------- */
+  // Filtrele se țin aici, ca să nu se golească atunci când se schimbă datele și pagina se redesenează.
+  const filtre = { q:'', luna:'', sursa:'', spatiu:'', problema:'', etapa:'', lucru:'lucru', important:'' };
+
   function clientsHtml(){
+    const opt = (list, sel, gol) => '<option value="">'+gol+'</option>' + list.map(([v,l]) => '<option value="'+esc(v)+'"'+(v===sel?' selected':'')+'>'+esc(l)+'</option>').join('');
+    const simple = list => list.map(x => [x, x]);
+    const nLucru = clients.filter(c => E.inLucru(c)).length;
     return (
       '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:20px;flex-wrap:wrap;gap:14px;">' +
-        '<div><div class="pagetitle">Clienți</div><div class="pagesub">'+clients.length+' înregistrați</div></div>' +
-        '<div style="display:flex;gap:8px;">' +
+        '<div><div class="pagetitle">Clienți</div><div class="pagesub">'+nLucru+' în lucru · '+(clients.length-nLucru)+' în arhivă (dinainte de 10 noiembrie)</div></div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
           '<button id="exportBtn" class="btn"><i class="ti ti-download" aria-hidden="true"></i> exportă backup</button>' +
           '<button id="pasteBtn" class="btn"><i class="ti ti-mail" aria-hidden="true"></i> client din mail</button>' +
           '<button id="addBtn" class="btn-primary">+ client nou</button>' +
         '</div>' +
       '</div>' +
       '<div style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;">' +
-        '<input id="search" type="text" placeholder="caută nume, telefon sau email..." style="background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 13px;border-radius:9px;font-size:13px;width:230px;outline:none;">' +
-        '<select id="filtLuna" class="filt"><option value="">toate lunile</option>' + monthFilterOptions() + '</select>' +
-        '<select id="filtSursa" class="filt"><option value="">toate sursele</option>' + SURSE.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('') + '</select>' +
-        '<select id="filtSpatiu" class="filt"><option value="">toate spațiile</option>' + L.TIP_SPATIU.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('') + '</select>' +
-        '<select id="filtProblema" class="filt"><option value="">toate problemele</option>' + L.PROBLEMA.map(s=>'<option value="'+esc(s)+'">'+esc(s)+'</option>').join('') + '</select>' +
-        '<select id="filtStatus" class="filt"><option value="">toate statusurile</option><option value="da">contactat</option><option value="nu">de contactat</option><option value="reapelare">cu reapelare programată</option><option value="nu_raspuns">nu a răspuns</option></select>' +
-        '<select id="filtImportant" class="filt"><option value="">toți clienții</option><option value="da">doar importanți ⭐</option><option value="prioritate">importanți ⭐ + de reapelat 📞</option><option value="nu_interesat">neinteresați ✕</option></select>' +
+        '<input id="search" type="text" value="'+esc(filtre.q)+'" placeholder="caută nume, telefon sau email..." style="background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 13px;border-radius:9px;font-size:13px;width:230px;outline:none;">' +
+        '<select id="filtLucru" class="filt">'+[['lucru','în lucru'],['arhiva','arhivă'],['toti','toți clienții']].map(([v,l]) => '<option value="'+v+'"'+(v===filtre.lucru?' selected':'')+'>'+l+'</option>').join('')+'</select>' +
+        '<select id="filtEtapa" class="filt">'+opt(E.ETAPE.map(e => [e.key, e.label]), filtre.etapa, 'toate etapele')+'</select>' +
+        '<select id="filtSpatiu" class="filt">'+opt(simple(L.TIP_SPATIU), filtre.spatiu, 'toate spațiile')+'</select>' +
+        '<select id="filtProblema" class="filt">'+opt(simple(L.PROBLEMA), filtre.problema, 'toate problemele')+'</select>' +
+        '<select id="filtSursa" class="filt">'+opt(simple(SURSE), filtre.sursa, 'toate sursele')+'</select>' +
+        '<select id="filtLuna" class="filt">'+opt(monthFilterPairs(), filtre.luna, 'toate lunile')+'</select>' +
+        '<select id="filtImportant" class="filt">'+opt([['da','doar importanți ⭐']], filtre.important, 'importanți și ceilalți')+'</select>' +
       '</div>' +
       '<div class="card" style="padding:0;overflow:hidden;">' +
         '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;">' +
-          '<thead><tr><th style="padding-left:20px;width:32px;"></th><th>Nume</th><th>Telefon</th><th>Spațiu</th><th>Problemă</th><th>Discuție tel.</th><th>Status</th><th style="padding-right:24px;">Venit</th></tr></thead>' +
+          '<thead><tr><th style="padding-left:20px;width:24px;"></th><th>Nume</th><th>Telefon</th><th>Spațiu</th><th>Problemă</th><th>Etapa</th><th>Ultima notă</th><th style="padding-right:24px;">Venit</th></tr></thead>' +
           '<tbody id="tbody"></tbody>' +
         '</table></div>' +
-        '<div id="empty" style="display:none;text-align:center;padding:60px 20px;color:var(--text3);"><div style="font-size:15px;">niciun client încă</div><div style="font-size:13px;margin-top:6px;">adaugă primul contact din formularele de reclame</div></div>' +
+        '<div id="empty" style="display:none;text-align:center;padding:50px 20px;color:var(--text3);font-size:13px;">niciun client pentru aceste filtre</div>' +
       '</div>'
     );
+  }
+
+  function monthFilterPairs(){
+    const names = ['ianuarie','februarie','martie','aprilie','mai','iunie','iulie','august','septembrie','octombrie','noiembrie','decembrie'];
+    const keys = Array.from(new Set(clients.filter(c => c.addedAt).map(c => monthKey(c.addedAt)))).sort().reverse();
+    return keys.map(k => { const [y,m] = k.split('-'); const l = names[parseInt(m,10)-1] + ' ' + y; return [k, l.charAt(0).toUpperCase() + l.slice(1)]; });
   }
 
   function wireClients(){
     document.getElementById('addBtn').addEventListener('click', () => openClientModal(null));
     document.getElementById('pasteBtn').addEventListener('click', openPasteModal);
     document.getElementById('exportBtn').addEventListener('click', exportBackup);
-    document.getElementById('search').addEventListener('input', renderClientsTable);
-    ['filtLuna','filtSursa','filtSpatiu','filtProblema','filtStatus','filtImportant'].forEach(id => document.getElementById(id).addEventListener('change', renderClientsTable));
+    document.getElementById('search').addEventListener('input', e => { filtre.q = e.target.value; renderClientsTable(); });
+    [['filtLucru','lucru'],['filtEtapa','etapa'],['filtSpatiu','spatiu'],['filtProblema','problema'],['filtSursa','sursa'],['filtLuna','luna'],['filtImportant','important']].forEach(([id, k]) =>
+      document.getElementById(id).addEventListener('change', e => { filtre[k] = e.target.value; renderClientsTable(); }));
     renderClientsTable();
   }
 
   function exportBackup(){
-    const payload = { exportedAt: new Date().toISOString(), clients, deals, activity, events };
+    const payload = { exportedAt: new Date().toISOString(), clients, deals, activity, events, istoric };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1072,37 +1058,25 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   }
 
   function renderClientsTable(){
-    const q = (document.getElementById('search').value||'').trim().toLowerCase();
-    const fl = document.getElementById('filtLuna').value;
-    const fs = document.getElementById('filtSursa').value;
-    const fst = document.getElementById('filtStatus').value;
-    const fimp = document.getElementById('filtImportant').value;
-    const fsp = document.getElementById('filtSpatiu').value;
-    const fpr = document.getElementById('filtProblema').value;
+    const q = filtre.q.trim().toLowerCase();
     const filtered = clients.filter(c => {
       if(q){
-        const qn = L.norm(q);
-        const qDigits = digitsOnly(q);
-        const nameMatch = L.norm(c.nume).includes(qn);
-        const emailMatch = L.norm(c.email).includes(qn);
-        const phoneMatch = (c.telefon||'').toLowerCase().includes(q);
-        const digitMatch = qDigits.length>2 && digitsOnly(c.telefon).includes(qDigits);
-        if(!nameMatch && !emailMatch && !phoneMatch && !digitMatch) return false;
+        const qn = L.norm(q), qDigits = digitsOnly(q);
+        const ok = L.norm(c.nume).includes(qn) || L.norm(c.email).includes(qn) || (c.telefon||'').toLowerCase().includes(q) || (qDigits.length>2 && digitsOnly(c.telefon).includes(qDigits));
+        if(!ok) return false;
       }
-      if(fl && monthKey(c.addedAt)!==fl) return false;
-      if(fs && c.sursa!==fs) return false;
-      if(fsp && c.tipSpatiu!==fsp) return false;
-      if(fpr && c.problema!==fpr) return false;
-      if(fst==='da' && !c.contactat) return false;
-      if(fst==='nu' && c.contactat) return false;
-      if(fst==='reapelare' && !(c.nextCallAt || c.nextCallReason)) return false;
-      if(fst==='nu_raspuns' && c.nextCallReason!=='Nu a răspuns') return false;
-      if(fimp==='da' && !c.important) return false;
-      if(fimp==='prioritate' && !(c.important || c.nextCallAt || c.nextCallReason)) return false;
-      if(fimp==='nu_interesat' && !c.notInterested) return false;
+      const lucru = E.inLucru(c);
+      if(filtre.lucru==='lucru' && !lucru) return false;
+      if(filtre.lucru==='arhiva' && lucru) return false;
+      if(filtre.etapa && E.etapaClient(c, deals)!==filtre.etapa) return false;
+      if(filtre.luna && monthKey(c.addedAt)!==filtre.luna) return false;
+      if(filtre.sursa && c.sursa!==filtre.sursa) return false;
+      if(filtre.spatiu && c.tipSpatiu!==filtre.spatiu) return false;
+      if(filtre.problema && c.problema!==filtre.problema) return false;
+      if(filtre.important==='da' && !c.important) return false;
       return true;
     }).sort((a,b)=>(b.addedAt||'').localeCompare(a.addedAt||''));
-    document.getElementById('empty').style.display = clients.length ? 'none':'block';
+    document.getElementById('empty').style.display = filtered.length ? 'none':'block';
     const tbody = document.getElementById('tbody');
     tbody.innerHTML = '';
     filtered.forEach(c => tbody.appendChild(clientRowEl(c)));
@@ -1111,37 +1085,27 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   function clientRowEl(c){
     const tr = document.createElement('tr');
     tr.className = 'rowhover';
-    if(c.notInterested) tr.style.opacity = '0.5';
-    const badge = c.contactat
-      ? '<span class="pill" style="background:var(--accent-bg);color:var(--accent-dark);">contactat</span>'
-      : '<span class="pill" style="background:var(--warm-bg);color:var(--warm-text);">de contactat</span>';
-    const recall = (c.nextCallAt || c.nextCallReason)
-      ? '<div style="font-size:11px;color:var(--warm-text);margin-top:4px;"><i class="ti ti-phone-outgoing" aria-hidden="true"></i> '+esc(c.nextCallReason||'reapelare')+(c.nextCallAt?' · '+fmtDateTime(c.nextCallAt):'')+'</div>'
-      : '';
+    const e = E.etapaClient(c, deals);
+    if(e === 'pierdut') tr.style.opacity = '0.55';
+    const p = E.pasClient(c);
+    const lucru = E.inLucru(c);
+    const pasTxt = (lucru && p.la && E.ACTIVE.includes(e)) ? '<div style="font-size:11px;color:'+(new Date(p.la) < new Date() ? 'var(--red)' : 'var(--text3)')+';margin-top:3px;white-space:nowrap;">→ '+esc(p.ce||'pas')+' · '+esc(cand(p.la))+'</div>' : '';
     const starTd = document.createElement('td');
     starTd.style.cssText = 'padding-left:20px;white-space:nowrap;';
     const starIcon = document.createElement('i');
     starIcon.className = 'ti ti-star';
     starIcon.style.cssText = 'font-size:17px;cursor:pointer;color:'+(c.important?'#d9a53c':'var(--line-strong)')+';';
-    starIcon.title = c.important ? 'client important — click să scoți' : 'marchează ca important';
-    starIcon.addEventListener('click', async (e) => {
-      e.stopPropagation();
+    starIcon.title = c.important ? 'client important: clic ca să scoți' : 'marchează ca important';
+    starIcon.addEventListener('click', async (ev) => {
+      ev.stopPropagation();
       await updateDoc(doc(db,'clients',c.id), { important: !c.important, updatedAt: new Date().toISOString() });
     });
-    const xIcon = document.createElement('i');
-    xIcon.className = 'ti ti-circle-x';
-    xIcon.style.cssText = 'font-size:17px;cursor:pointer;margin-left:8px;color:'+(c.notInterested?'#c0453f':'var(--line-strong)')+';';
-    xIcon.title = c.notInterested ? 'neinteresat — click să anulezi' : 'marchează ca neinteresat';
-    xIcon.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      await updateDoc(doc(db,'clients',c.id), { notInterested: !c.notInterested, updatedAt: new Date().toISOString() });
-    });
     starTd.appendChild(starIcon);
-    starTd.appendChild(xIcon);
     tr.appendChild(starTd);
-    const spatiu = [c.tipSpatiu, c.suprafata].filter(Boolean).join(' · ');
-    const nou = !c.contactat && !c.notInterested;
+    const spatiu = spatiuScurt(c);
+    const nou = lucru && e === 'nou';
     const dublura = gasesteDublura(c.telefon, c.email, c.id);
+    const nota = ultimaNota(c);
     tr.insertAdjacentHTML('beforeend',
       '<td style="max-width:200px;"><div style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+esc(c.nume) +
         (dublura ? ' <span class="pill" title="Mai e un client cu același telefon sau email: '+esc(dublura.nume)+'" style="background:var(--red-bg);color:var(--red);font-size:10.5px;padding:2px 7px;">dublură?</span>' : '') + '</div>' +
@@ -1149,9 +1113,9 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
       '<td class="mono" style="white-space:nowrap;">'+esc(c.telefon||'')+'</td>' +
       '<td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+esc(spatiu || c.nevoie || '')+'">'+(spatiu ? esc(spatiu) : '<span style="color:var(--text3);">'+esc(c.nevoie||'')+'</span>')+'</td>' +
       '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+esc(c.problema||'')+'">'+esc(c.problema||'')+'</td>' +
-      '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);">'+esc(c.rezultat||'')+'</td>' +
-      '<td>'+badge+recall+'</td>' +
-      '<td style="padding-right:24px;white-space:nowrap;color:'+(nou?'var(--warm-text)':'var(--text3)')+';font-weight:'+(nou?'500':'400')+';" title="'+esc(fmtDateTime(c.addedAt))+'">'+esc(L.vechime(c.addedAt))+'</td>'
+      '<td style="white-space:nowrap;">'+etapaPill(e, true)+pasTxt+'</td>' +
+      '<td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2);" title="'+esc(nota)+'">'+esc(nota)+'</td>' +
+      '<td style="padding-right:24px;white-space:nowrap;color:'+(nou?culoareVechime(c.addedAt):'var(--text3)')+';font-weight:'+(nou?'500':'400')+';" title="'+esc(fmtDateTime(c.addedAt))+'">'+esc(L.vechime(c.addedAt))+'</td>'
     );
     const phoneTd = tr.children[2];
     const cifre = L.cifreTelefon(c.telefon);
@@ -1161,7 +1125,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
       acts.innerHTML =
         '<a href="tel:+'+cifre+'" title="Sună" style="color:var(--accent-dark);"><i class="ti ti-phone" style="font-size:16px;" aria-hidden="true"></i></a>' +
         '<a href="'+esc(linkWhatsApp(c))+'" target="_blank" rel="noopener" title="WhatsApp, cu mesajul pregătit" style="color:#1f8f4e;"><i class="ti ti-brand-whatsapp" style="font-size:16px;" aria-hidden="true"></i></a>';
-      acts.querySelectorAll('a').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
+      acts.querySelectorAll('a').forEach(a => a.addEventListener('click', ev => ev.stopPropagation()));
       phoneTd.appendChild(acts);
     }
     tr.addEventListener('click', () => openClientModal(c.id));
@@ -1171,108 +1135,6 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   function linkWhatsApp(c){
     const cifre = L.cifreTelefon(c.telefon);
     return 'https://wa.me/' + cifre + '?text=' + encodeURIComponent(L.mesajWhatsApp(c, numeExpeditor()));
-  }
-
-  /* ---------- OFERTE (DEALS) ---------- */
-  function dealsHtml(){
-    return (
-      '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:22px;flex-wrap:wrap;gap:14px;">' +
-        '<div><div class="pagetitle">Oferte</div><div class="pagesub">'+deals.length+' oferte totale · '+fmtRon(activeDealsValue())+' active</div></div>' +
-        '<button id="addDealBtn" class="btn-primary">+ ofertă nouă</button>' +
-      '</div>' +
-      '<div class="dealsboard" style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;">' + STAGES.map(stageColumnHtml).join('') + '</div>'
-    );
-  }
-
-  function stageColumnHtml(s){
-    return '<div>' +
-      '<div style="display:flex;align-items:center;gap:6px;margin-bottom:12px;">' +
-        '<span class="pill" style="background:'+s.bg+';color:'+s.color+';">'+s.label+'</span>' +
-      '</div>' +
-      '<div id="col_'+s.key+'" style="display:flex;flex-direction:column;gap:12px;min-height:70px;"></div>' +
-      '<div id="tot_'+s.key+'" style="font-size:12px;color:var(--text3);margin-top:10px;"></div>' +
-    '</div>';
-  }
-
-  function wireDeals(){
-    document.getElementById('addDealBtn').addEventListener('click', () => openDealModal(null));
-    STAGES.forEach(s => {
-      const col = document.getElementById('col_'+s.key);
-      const items = deals.filter(d=>d.etapa===s.key).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
-      items.forEach(d => col.appendChild(dealCardEl(d, s)));
-      const total = items.reduce((sum,d)=>sum+(Number(d.valoare)||0),0);
-      document.getElementById('tot_'+s.key).textContent = fmtRon(total) + ' · ' + items.length;
-    });
-  }
-
-  function dealCardEl(d, stageDef){
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.style.cssText += 'padding:15px 16px;border-left:3px solid '+stageDef.color+';cursor:pointer;';
-    card.innerHTML =
-      '<div style="font-size:13.5px;font-weight:500;">'+esc(d.titlu||d.clientNume)+'</div>' +
-      '<div style="font-size:12.5px;color:var(--text2);margin-top:3px;">'+esc(d.clientNume)+'</div>' +
-      '<div class="mono" style="font-size:13px;color:var(--accent-dark);margin-top:8px;">'+fmtRon(d.valoare)+'</div>' +
-      '<div style="font-size:11.5px;color:var(--text3);margin-top:6px;">creat '+fmtDate(d.createdAt)+'</div>';
-    card.addEventListener('click', () => openDealModal(d.id));
-    return card;
-  }
-
-  /* ---------- SARCINI (TASKS) ---------- */
-  function getTasks(){
-    const tasks = [];
-    clients.filter(c=>!c.notInterested).forEach(c => {
-      if(c.nextCallAt){
-        tasks.push({id:'ct_'+c.id, type:'client', mode:'recall', refId:c.id, label:(c.nextCallReason?c.nextCallReason+' — ':'')+'Sună din nou pe '+c.nume, sub: fmtDateTime(c.nextCallAt) + (c.telefon?' · '+c.telefon:''), ts:c.nextCallAt});
-      } else if(!c.contactat){
-        tasks.push({id:'ct_'+c.id, type:'client', mode:'contact', refId:c.id, label:'Sună pe '+c.nume, sub: [c.telefon || c.email || '', 'lead venit '+L.vechime(c.addedAt)].filter(Boolean).join(' · '), ts:c.addedAt});
-      }
-    });
-    deals.filter(d=>d.followUp).forEach(d => {
-      tasks.push({id:'dl_'+d.id, type:'deal', refId:d.id, label:'Follow-up ofertă — '+d.clientNume, sub: fmtDate(d.followUp), ts:d.followUp});
-    });
-    return tasks.sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
-  }
-
-  function tasksHtml(){
-    const tasks = getTasks();
-    return (
-      '<div style="margin-bottom:22px;"><div class="pagetitle">Sarcini</div><div class="pagesub">'+tasks.length+' de rezolvat</div></div>' +
-      '<div class="card" style="padding:0;overflow:hidden;">' +
-        '<div id="taskList" style="display:flex;flex-direction:column;"></div>' +
-        (tasks.length===0 ? '<div style="text-align:center;padding:50px 20px;color:var(--text3);font-size:13px;">nicio sarcină restantă</div>' : '') +
-      '</div>'
-    );
-  }
-
-  function wireTasks(){
-    const list = document.getElementById('taskList');
-    getTasks().forEach(t => {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:14px;padding:17px 22px;border-bottom:1px solid var(--line);cursor:pointer;';
-      row.innerHTML =
-        '<i class="ti ti-clock" style="font-size:16px;color:var(--warm-text);flex-shrink:0;" aria-hidden="true"></i>' +
-        '<div style="flex:1;"><div style="font-size:13.5px;">'+esc(t.label)+'</div><div style="font-size:12px;color:var(--text3);margin-top:2px;">'+esc(t.sub)+'</div></div>' +
-        '<button class="btn" data-done="1">rezolvat</button>';
-      row.querySelector('button').addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if(t.type==='client' && t.mode==='recall'){
-          await updateDoc(doc(db,'clients',t.refId), { nextCallAt:'', nextCallReason:'', updatedAt:new Date().toISOString() });
-          const c = clients.find(x=>x.id===t.refId);
-          logActivity('Reapelare rezolvată: '+(c?c.nume:''));
-        } else if(t.type==='client'){
-          await updateDoc(doc(db,'clients',t.refId), { contactat:true, updatedAt:new Date().toISOString() });
-          const c = clients.find(x=>x.id===t.refId);
-          logActivity('Marcat ca și contactat: '+(c?c.nume:''));
-        } else {
-          await updateDoc(doc(db,'deals',t.refId), { followUp:'', updatedAt:new Date().toISOString() });
-          const d = deals.find(x=>x.id===t.refId);
-          logActivity('Follow-up rezolvat pentru '+(d?d.clientNume:''));
-        }
-      });
-      row.addEventListener('click', () => { if(t.type==='client') openClientModal(t.refId); else openDealModal(t.refId); });
-      list.appendChild(row);
-    });
   }
 
   /* ---------- ACTIVITATE ---------- */
@@ -1316,6 +1178,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   /* ---------- CLIENT MODAL ---------- */
   let clientPrefill = null;
   let emailPanelOpen = false;
+  let fisaDeschisa = null;
 
   function val(id){ const el = document.getElementById(id); return el ? String(el.value||'').trim() : ''; }
 
@@ -1330,7 +1193,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   }
   function inputRow(label, id, value, placeholder){
     return '<div style="margin-bottom:10px;flex:1;min-width:150px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">'+label+'</div>' +
-      '<input id="'+id+'" type="text" value="'+esc(value||'')+'" placeholder="'+esc(placeholder||'')+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;"></div>';
+      '<input id="'+id+'" type="text" value="'+esc(value===null||value===undefined?'':value)+'" placeholder="'+esc(placeholder||'')+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;"></div>';
   }
   function sectionTitle(text){
     return '<div style="font-size:11.5px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin:16px 0 8px;">'+text+'</div>';
@@ -1390,25 +1253,42 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     ));
   }
 
+  const ICON_ISTORIC = Object.fromEntries(E.TIPURI_ISTORIC.map(t => [t.key, t.icon]).concat([['formular','ti-forms']]));
+  function renderIstoricBox(){
+    const box = document.getElementById('istoricBox');
+    const c = clients.find(x => x.id === fisaDeschisa);
+    if(!box || !c) return;
+    const lista = istoricClient(c.id);
+    const rand = (icon, cand_, text, extra) => '<div style="display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--line);">' +
+      '<i class="ti '+icon+'" style="font-size:15px;color:var(--text3);margin-top:2px;" aria-hidden="true"></i>' +
+      '<div style="flex:1;min-width:0;"><div style="font-size:11.5px;color:var(--text3);">'+cand_+extra+'</div>' +
+      (text ? '<div style="font-size:13px;white-space:pre-wrap;">'+esc(text)+'</div>' : '') + '</div></div>';
+    box.innerHTML =
+      (istoricEroare ? '<div style="font-size:12px;color:var(--red);padding:6px 0;">Istoricul nu se poate citi încă (regulile din Firebase).</div>' : '') +
+      lista.map(h => rand(ICON_ISTORIC[h.tip] || 'ti-note', esc(fmtDateTime(h.cand)),
+        h.text, (h.etapaIn && h.etapaIn !== h.etapaDin ? ' · ' + etapaPill(h.etapaDin||'nou', true) + ' → ' + etapaPill(h.etapaIn, true) : ''))).join('') +
+      (c.rezultat ? rand('ti-archive', 'din fișa veche', c.rezultat, '') : '') +
+      (!lista.length && !c.rezultat ? '<div style="font-size:12.5px;color:var(--text3);padding:6px 0;">Nimic încă. Fiecare apel, mesaj sau notă apare aici, cu data lui.</div>' : '');
+  }
+
   function openClientModal(id, prefill){
     editingClientId = id || null;
     clientPrefill = id ? null : (prefill || null);
+    fisaDeschisa = id || null;
     emailPanelOpen = false;
     const c = id ? clients.find(x=>x.id===id) : (prefill || null);
+    if(id && !c) return;
     const tara = (c && c.tara) || 'RO';
     const taraOpts = L.TARI.slice();
     if(tara && !taraOpts.some(t => t[0]===tara)) taraOpts.push([tara, tara, '']);
-    const m = document.getElementById('modal');
-    m.innerHTML =
-      modalHeader(id ? 'Fișa clientului' : (prefill ? 'Client nou, din mail' : 'Client nou')) +
-      (id ? '<div style="font-size:12px;color:var(--text3);margin-bottom:12px;">venit '+esc(L.vechime(c.addedAt))+' ('+esc(fmtDateTime(c.addedAt))+')' + (c.sursa?' · '+esc(c.sursa):'') + (c.reclama?' · '+esc(c.reclama):'') + '</div>'
-          : (prefill ? '<div style="font-size:12px;color:var(--accent-dark);background:var(--accent-bg);padding:8px 10px;border-radius:8px;margin-bottom:12px;">Am completat fișa din mail. Verifică datele, apoi „salvează”.</div>' : '')) +
-      '<div id="quickActions" style="margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--line);"></div>' +
+    const e = id ? E.etapaClient(c, deals) : 'nou';
+    const p = id ? E.pasClient(c) : {ce:'', la:''};
+    const detalii =
       field('Nume','f_nume', c?c.nume:'') +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
         '<div style="margin-bottom:10px;flex:0 0 150px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">Țara</div>' +
           '<select id="f_tara" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;">' +
-            taraOpts.map(([cod, nume, p]) => '<option value="'+cod+'"'+(cod===tara?' selected':'')+'>'+esc(nume)+(p?' (+'+p+')':'')+'</option>').join('') +
+            taraOpts.map(([cod, nume, pr]) => '<option value="'+cod+'"'+(cod===tara?' selected':'')+'>'+esc(nume)+(pr?' (+'+pr+')':'')+'</option>').join('') +
           '</select></div>' +
         inputRow('Telefon','f_telefon', c?c.telefon:'', '0724 500 507') +
       '</div>' +
@@ -1418,7 +1298,6 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
         selectRow('Sursă','f_sursa', SURSE, c?c.sursa:'') +
         inputRow('Formular sau reclamă','f_reclama', c?c.reclama:'', 'de exemplu: pagina de consultanță') +
       '</div>' +
-      sectionTitle('Spațiul') +
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
         selectRow('Tip spațiu','f_tip', L.TIP_SPATIU, c?c.tipSpatiu:'') +
         selectRow('Suprafață','f_supr', L.SUPRAFATA, c?c.suprafata:'') +
@@ -1426,28 +1305,40 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
       selectRow('Problema','f_problema', L.PROBLEMA, c?c.problema:'') +
       dimensionsField('Dimensiuni măsurate (dacă le știi)', c) +
       textareaField('Mesajul clientului (din formular)','f_mesaj', c?c.mesaj:'') +
-      sectionTitle('Discuția') +
       textareaField('Notițe (nevoia clientului)','f_nevoie', c?c.nevoie:'') +
-      textareaField('Rezultatul discuției la telefon','f_rezultat', c?c.rezultat:'') +
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:4px 0;">' +
-        '<input id="f_contactat" type="checkbox" '+(c&&c.contactat?'checked':'')+' style="width:16px;height:16px;accent-color:var(--accent);">' +
-        '<label for="f_contactat" style="font-size:13px;color:var(--text2);cursor:pointer;">am luat legătura cu acest client</label></div>' +
+      inputRow('Valoarea ofertei (lei)','f_valoare', c && id ? (E.valoareClient(c, deals) || '') : '', 'se completează la ofertă') +
       '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:4px 0;">' +
         '<input id="f_important" type="checkbox" '+(c&&c.important?'checked':'')+' style="width:16px;height:16px;accent-color:#d9a53c;">' +
-        '<label for="f_important" style="font-size:13px;color:var(--text2);cursor:pointer;">⭐ client important / potențial ridicat</label></div>' +
-      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:4px 0;">' +
-        '<input id="f_notinterested" type="checkbox" '+(c&&c.notInterested?'checked':'')+' style="width:16px;height:16px;accent-color:#c0453f;">' +
-        '<label for="f_notinterested" style="font-size:13px;color:var(--text2);cursor:pointer;">✕ neinteresat: nu mai suna, dar păstrează în bază</label></div>' +
-      '<div style="margin-top:14px;padding:12px;background:#fbf5ea;border:1px solid var(--warm-bg);border-radius:8px;">' +
-        '<div style="font-size:12px;font-weight:500;color:var(--warm-text);margin-bottom:8px;">Reapelare</div>' +
-        selectRow('Motiv','f_recall_reason', ['Nu a răspuns','A cerut alt moment','Ocupat, revin eu'], c?c.nextCallReason:'') +
-        '<div style="margin-bottom:0;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">Data și ora reapelării</div>' +
-        '<input id="f_recall_at" type="datetime-local" value="'+esc(toDatetimeLocal(c?c.nextCallAt:''))+'" style="width:100%;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:9px 11px;border-radius:8px;font-size:13px;outline:none;"></div>' +
-      '</div>' +
+        '<label for="f_important" style="font-size:13px;color:var(--text2);cursor:pointer;">⭐ client important / potențial ridicat</label></div>';
+    const m = document.getElementById('modal');
+    m.innerHTML =
+      modalHeader(id ? esc(c.nume) : (prefill ? 'Client nou, din mail' : 'Client nou')) +
+      (id ? '<div style="font-size:12px;color:var(--text3);margin-bottom:12px;">venit '+esc(L.vechime(c.addedAt))+' ('+esc(fmtDateTime(c.addedAt))+')' + (c.sursa?' · '+esc(c.sursa):'') + (c.reclama?' · '+esc(c.reclama):'') + (E.inLucru(c)?'':' · <b>arhivă</b>') + '</div>'
+          : (prefill ? '<div style="font-size:12px;color:var(--accent-dark);background:var(--accent-bg);padding:8px 10px;border-radius:8px;margin-bottom:12px;">Am completat fișa din mail. Verifică datele, apoi „salvează”.</div>' : '')) +
+      (id ?
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">' +
+          E.ETAPE.map(x => '<button type="button" class="btn" data-etapa-fisa="'+x.key+'" style="padding:5px 10px;font-size:12px;'+(x.key===e?'background:'+x.fundal+';color:'+x.culoare+';border-color:'+x.culoare+';font-weight:600;':'')+'">'+esc(x.label)+'</button>').join('') +
+        '</div>' +
+        '<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:#faf9f6;border:1px solid var(--line);border-radius:10px;padding:11px 14px;margin-bottom:12px;">' +
+          '<div style="flex:1;min-width:180px;"><div style="font-size:11px;color:var(--text3);">PASUL URMĂTOR</div>' +
+          '<div style="font-size:13.5px;font-weight:500;color:'+(p.la && new Date(p.la) < new Date() ? 'var(--red)' : 'var(--text)')+';">'+(p.la ? esc(p.ce||'pas')+' · '+esc(cand(p.la)) : (E.ACTIVE.includes(e) ? 'niciun pas programat' : 'client încheiat'))+'</div></div>' +
+          '<button class="btn-primary" id="fisaGata" style="padding:8px 14px;">Gata</button>' +
+        '</div>' : '') +
+      '<div id="quickActions" style="margin-bottom:14px;"></div>' +
+      (id ?
+        sectionTitle('Istoric') +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:4px;">' +
+          '<select id="hTip" style="background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:8px 9px;border-radius:8px;font-size:12.5px;">'+E.TIPURI_ISTORIC.map(t => '<option value="'+t.key+'"'+(t.key==='nota'?' selected':'')+'>'+t.label+'</option>').join('')+'</select>' +
+          '<input id="hText" placeholder="adaugă o notă sau ce s-a vorbit" style="flex:1;min-width:160px;background:#fff;border:1px solid var(--line-strong);color:var(--text);padding:8px 10px;border-radius:8px;font-size:12.5px;outline:none;">' +
+          '<button class="btn" id="hAdd" style="padding:7px 12px;font-size:12.5px;">adaugă</button>' +
+        '</div>' +
+        '<div id="istoricBox" style="margin-bottom:10px;"></div>' +
+        '<details id="detalii" style="margin-top:8px;"><summary style="cursor:pointer;font-size:12.5px;color:var(--text2);padding:8px 0;">Detalii: contact, spațiu, mesajul din formular</summary>' + detalii + '</details>'
+        : detalii) +
       '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:10px;"></div>' +
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">' +
         (id && isAdmin()?'<button id="deleteBtn" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;">șterge client</button>':'<span></span>') +
-        '<div style="display:flex;gap:8px;"><button id="cancelBtn" class="btn">anulează</button><button id="saveBtn" class="btn-primary">salvează</button></div>' +
+        '<div style="display:flex;gap:8px;"><button id="cancelBtn" class="btn">închide</button><button id="saveBtn" class="btn-primary">'+(id?'salvează detaliile':'salvează')+'</button></div>' +
       '</div>';
     document.getElementById('modalWrap').style.display = 'flex';
     m.scrollTop = 0;
@@ -1455,9 +1346,30 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     document.getElementById('cancelBtn').onclick = closeModal;
     document.getElementById('saveBtn').onclick = saveClient;
     if(id && isAdmin()) document.getElementById('deleteBtn').onclick = () => deleteClient(id);
+    if(id){
+      document.getElementById('fisaGata').onclick = () => openGataModal(id);
+      m.querySelectorAll('[data-etapa-fisa]').forEach(b => b.addEventListener('click', () => openGataModal(id, b.dataset.etapaFisa)));
+      document.getElementById('hAdd').onclick = adaugaInIstoric;
+      document.getElementById('hText').addEventListener('keydown', ev => { if(ev.key === 'Enter') adaugaInIstoric(); });
+      renderIstoricBox();
+    }
     ['f_nume','f_telefon','f_email'].forEach(fid => document.getElementById(fid).addEventListener('input', renderQuickActions));
     ['f_tara','f_tip','f_supr','f_problema'].forEach(fid => document.getElementById(fid).addEventListener('change', renderQuickActions));
     renderQuickActions();
+  }
+
+  async function adaugaInIstoric(){
+    const c = clients.find(x => x.id === fisaDeschisa);
+    const text = val('hText'), tip = val('hTip') || 'nota';
+    if(!c || !text) return;
+    const acum = new Date().toISOString();
+    try{
+      await addDoc(istoricCol, { clientId: c.id, tip, text, cand: acum, cine: auth.currentUser.email });
+      const upd = { updatedAt: acum };
+      if(tip !== 'nota' && !c.primulContactLa){ upd.primulContactLa = acum; upd.contactat = true; }
+      await updateDoc(doc(db,'clients',c.id), upd);
+      document.getElementById('hText').value = '';
+    }catch(err){ console.error(err); formError('Nu s-a salvat în istoric: ' + (err.code === 'permission-denied' ? 'regulile din Firebase nu permit încă istoricul.' : 'verifică internetul.')); }
   }
 
   function formError(msg){
@@ -1481,6 +1393,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     }
     document.getElementById('formError').style.display = 'none';
     const num = id => document.getElementById(id).value === '' ? null : parseFloat(document.getElementById(id).value);
+    const valoare = parseFloat(val('f_valoare').replace(/\s/g,'').replace(',', '.'));
     const data = {
       nume, telefon, tara, email,
       adresa: val('f_adresa'),
@@ -1494,29 +1407,30 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
       lungime: num('f_lungime'),
       inaltime: num('f_inaltime'),
       nevoie: val('f_nevoie'),
-      rezultat: val('f_rezultat'),
-      contactat: document.getElementById('f_contactat').checked,
       important: document.getElementById('f_important').checked,
-      notInterested: document.getElementById('f_notinterested').checked,
-      nextCallReason: val('f_recall_reason'),
-      nextCallAt: document.getElementById('f_recall_at').value ? new Date(document.getElementById('f_recall_at').value).toISOString() : '',
       updatedAt: new Date().toISOString()
     };
+    if(!isNaN(valoare)) data.valoare = valoare;
     const saveBtn = document.getElementById('saveBtn');
     try{
       if(editingClientId){
         saveBtn.disabled = true;
         await updateDoc(doc(db,'clients',editingClientId), data);
         logActivity('Client actualizat: '+nume);
+        toast('Detaliile sunt salvate.');
+        saveBtn.disabled = false;
       } else {
         const dup = gasesteDublura(telefon, email, null);
         if(dup && !confirm('Există deja un client cu același telefon sau email: '+dup.nume+' (adăugat pe '+fmtDate(dup.addedAt)+').\n\nÎl adaug totuși ca client nou?')) return;
         saveBtn.disabled = true;
-        data.addedAt = (clientPrefill && clientPrefill.addedAt) || new Date().toISOString();
+        const acum = new Date().toISOString();
+        Object.assign(data, { etapa: 'nou', etapaLa: acum, etapaMax: 0, contactat: false, notInterested: false, rezultat: '',
+          pasUrmator: '', pasLa: '', nextCallAt: '', nextCallReason: '',
+          addedAt: (clientPrefill && clientPrefill.addedAt) || acum });
         await addDoc(clientsCol, data);
         logActivity('Client nou adăugat: '+nume + (clientPrefill ? ' (din mail)' : ''));
+        closeModal();
       }
-      closeModal();
     }catch(err){
       console.error(err);
       saveBtn.disabled = false;
@@ -1565,79 +1479,16 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     closeModal();
   }
 
-  /* ---------- DEAL MODAL ---------- */
-  function openDealModal(id){
-    editingDealId = id || null;
-    const d = id ? deals.find(x=>x.id===id) : null;
-    const m = document.getElementById('modal');
-    const clientOptions = clients.map(c=>c.nume);
-    m.innerHTML =
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">' +
-        '<div style="font-size:15px;font-weight:500;">'+(d?'Editează ofertă':'Ofertă nouă')+'</div>' +
-        '<button id="closeModal" style="background:none;border:none;color:var(--text2);cursor:pointer;font-size:18px;">&times;</button>' +
-      '</div>' +
-      (clients.length ? selectField('Client','f_client', clientOptions, d?d.clientNume:'', true) : '<div style="font-size:12px;color:var(--warm-text);margin-bottom:10px;">adaugă întâi un client la Clienți</div>') +
-      field('Titlu ofertă (opțional)','f_titlu', d?d.titlu:'') +
-      field('Valoare (RON)','f_valoare', d?d.valoare:'', 'number') +
-      selectField('Etapă','f_etapa', STAGES.map(s=>s.label), ((d && STAGES.find(s=>s.key===d.etapa)) || STAGES[0]).label) +
-      field('Follow-up (opțional)','f_followup', d?d.followUp:'', 'date') +
-      '<div id="formError" style="display:none;color:#a3372f;font-size:12px;margin-top:6px;"></div>' +
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">' +
-        (d?'<button id="deleteBtn" style="background:none;border:none;color:var(--text3);font-size:12px;cursor:pointer;">șterge ofertă</button>':'<span></span>') +
-        '<div style="display:flex;gap:8px;"><button id="cancelBtn" class="btn">anulează</button><button id="saveBtn" class="btn-primary">salvează</button></div>' +
-      '</div>';
-    document.getElementById('modalWrap').style.display = 'flex';
-    document.getElementById('closeModal').onclick = closeModal;
-    document.getElementById('cancelBtn').onclick = closeModal;
-    document.getElementById('saveBtn').onclick = saveDeal;
-    if(d) document.getElementById('deleteBtn').onclick = () => deleteDeal(d.id);
-  }
-
-  async function saveDeal(){
-    const errEl = document.getElementById('formError');
-    const clientSel = document.getElementById('f_client');
-    const clientNume = clientSel ? clientSel.value : '';
-    if(!clientNume){ errEl.textContent='selectează un client'; errEl.style.display='block'; return; }
-    errEl.style.display='none';
-    const stageLabel = document.getElementById('f_etapa').value;
-    const stageObj = STAGES.find(s=>s.label===stageLabel) || STAGES[0];
-    const data = {
-      clientNume,
-      titlu: document.getElementById('f_titlu').value.trim(),
-      valoare: parseFloat(document.getElementById('f_valoare').value) || 0,
-      etapa: stageObj.key,
-      followUp: document.getElementById('f_followup').value,
-      updatedAt: new Date().toISOString()
-    };
-    if(editingDealId){
-      await updateDoc(doc(db,'deals',editingDealId), data);
-      logActivity('Ofertă actualizată — '+clientNume+' → '+stageObj.label);
-    } else {
-      data.createdAt = new Date().toISOString();
-      await addDoc(dealsCol, data);
-      logActivity('Ofertă nouă creată pentru '+clientNume);
-    }
-    closeModal();
-  }
-
-  async function deleteDeal(id){
-    const d = deals.find(x=>x.id===id);
-    if(!confirm('Ștergi definitiv oferta pentru "'+(d?d.clientNume:'')+'"? Nu poate fi recuperată.')) return;
-    await deleteDoc(doc(db,'deals',id));
-    if(d) logActivity('Ofertă ștearsă — '+d.clientNume);
-    closeModal();
-  }
-
   function closeModal(){
     document.getElementById('modalWrap').style.display = 'none';
-    editingClientId = null; editingDealId = null; editingEventId = null; calSelectedDate = null; clientPrefill = null; emailPanelOpen = false;
+    editingClientId = null; editingEventId = null; calSelectedDate = null; clientPrefill = null; emailPanelOpen = false; fisaDeschisa = null; gata = null;
   }
 
   document.getElementById('topSearch').addEventListener('keydown', (e) => {
     if(e.key==='Enter'){
+      filtre.q = document.getElementById('topSearch').value;
+      filtre.lucru = 'toti';
       currentView='clienti'; renderNav(); renderPage();
-      const s = document.getElementById('search');
-      if(s){ s.value = document.getElementById('topSearch').value; renderClientsTable(); }
     }
   });
 

@@ -1,5 +1,5 @@
-const CACHE = 'beze-crm-v2';
-const SHELL = ['./', './index.html', './app.js', './lead.js', './icon-192.png', './icon-512.png'];
+const CACHE = 'beze-crm-v3';
+const SHELL = ['./', './index.html', './app.js', './lead.js', './etape.js', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)));

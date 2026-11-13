@@ -419,12 +419,9 @@ def initiale(nume):
 def ruleaza(args):
     de_la = dt.datetime.strptime(args.de_la, '%Y-%m-%d')
     stare = citeste_stare()
+    # Fără --backup, fiecare formular nou devine o fișă: dacă omul e deja în CRM, CRM-ul îl arată la „Au revenit”
+    # și îl pune în fișa veche cu un clic (programul nu are voie să citească CRM-ul). --backup a fost doar pentru primul import.
     tel_vechi, em_vechi = chei_din_backup(args.backup) if args.backup else (set(), set())
-    for v in stare['importate'].values():
-        if v.get('telefon'):
-            tel_vechi.add(v['telefon'])
-        if v.get('email'):
-            em_vechi.add(v['email'])
     token = None if args.proba else autentificare_robot()[0]
     noi, sarite, erori = [], 0, 0
     acum = dt.datetime.now(dt.timezone.utc)
@@ -441,7 +438,7 @@ def ruleaza(args):
             sarite += 1
             continue
         t, e = cheie_client(c)
-        if (t and t in tel_vechi) or (e and e in em_vechi):
+        if args.backup and ((t and t in tel_vechi) or (e and e in em_vechi)):
             if not args.proba:
                 stare['sarite'][cheie_mail] = 'există deja în CRM'
             sarite += 1
@@ -478,9 +475,9 @@ def ruleaza(args):
         proaspete = [c for c in noi if (acum - dt.datetime.fromisoformat(c['addedAt'].replace('Z', '+00:00'))).total_seconds() < 86400]
         if len(proaspete) == 1:
             c = proaspete[0]
-            notificare('BEZE CRM: client nou', '%s · %s' % (c['nume'], ' · '.join(x for x in [c['tipSpatiu'], c['problema']] if x)))
+            notificare('BEZE CRM: formular nou', '%s · %s' % (c['nume'], ' · '.join(x for x in [c['tipSpatiu'], c['problema']] if x)))
         elif len(proaspete) > 1:
-            notificare('BEZE CRM', '%d clienți noi din formularul de pe site' % len(proaspete))
+            notificare('BEZE CRM', '%d formulare noi de pe site' % len(proaspete))
     if args.proba or noi or sarite or erori:   # la rulările de rutină, fără nimic nou, nu scrie în jurnal
         print('%s  %s: %d noi, %d sărite, %d erori' % (iso(acum)[:19], 'PROBĂ' if args.proba else 'gata', len(noi), sarite, erori))
     return 1 if erori else 0
