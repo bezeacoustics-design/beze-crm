@@ -96,7 +96,7 @@ export const PASI = [
     spui: ['Atunci ne-am înțeles: {pasUrmator}. Vă trimit acum pe WhatsApp ce am vorbit, ca să-l aveți scris. Mulțumesc frumos!'],
     faci: [
       'Apeși „Gata” în CRM: ce s-a întâmplat (câteva cuvinte), etapa și pasul următor, cu ziua și ora.',
-      'Trimiți mesajul din fișă: WhatsApp sau „Mail de răspuns”. Îl citești înainte să-l trimiți.'
+      'Trimiți din fișă mesajul „După apel” pe WhatsApp (sau „Mail de răspuns”, dacă nu are WhatsApp). Îl citești înainte să-l trimiți.'
     ]
   }
 ];

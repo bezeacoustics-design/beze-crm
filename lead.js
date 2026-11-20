@@ -262,3 +262,20 @@ export function mesajWhatsApp(c, expeditor) {
     'Cu ele îți spunem ce panouri, câte și unde. Dacă vrei, putem veni și noi să măsurăm camera: primești o analiză acustică și un plan cu panourile în spațiul tău. Studiul costă 500 de lei, cu deplasarea inclusă în București și Ilfov. Din ce oraș ești? Mersi!'
   ].join('\n');
 }
+
+// După apel: cerem cotele și pozele, ca să pregătim raportul. Pe „dumneavoastră”, ca la telefon (ghidul de apel).
+export function mesajWhatsAppDupaApel(c, expeditor) {
+  const tip = varianta(c.tipSpatiu);
+  const v = DETALII[tip];
+  const com = tip === 'comercial';
+  const salut = c.nume ? 'Bună ziua, ' + c.nume + '!' : 'Bună ziua!';
+  const cine = expeditor ? 'Sunt ' + expeditor + ' de la BEZE Acoustics.' : 'Vă scriem de la BEZE Acoustics.';
+  return [
+    salut + ' ' + cine + ' Așa cum am vorbit la telefon, ca să vă pregătim raportul acustic pentru ' + (com ? 'spațiul' : 'camera') + ' dumneavoastră, avem nevoie de:',
+    '• cotele ' + (com ? 'spațiului' : 'camerei') + ': lungime, lățime, înălțime (dacă aveți un plan sau un releveu, e și mai bine)',
+    '• ' + v.poze + ' (o schiță de mână ajunge)',
+    '• câteva poze, din fiecare colț, cu ' + (com ? 'tot spațiul' : 'toată camera') + ' în cadru',
+    '',
+    'Când le primim, vă trimitem raportul: ce se întâmplă acum în ' + (com ? 'spațiu' : 'cameră') + ' și ce panouri vă recomandăm, câte și unde. Mulțumesc!'
+  ].join('\n');
+}

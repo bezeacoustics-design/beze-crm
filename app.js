@@ -293,7 +293,8 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     const cifre = L.cifreTelefon(c.telefon);
     if(!cifre) return '';
     return '<a class="btn" href="tel:+'+cifre+'" data-stop="1" style="text-decoration:none;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-phone" aria-hidden="true"></i>Sună</a>' +
-      '<a class="btn" href="'+esc(linkWhatsApp(c))+'" target="_blank" rel="noopener" data-stop="1" style="text-decoration:none;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>';
+      '<a class="btn" href="'+esc(linkWhatsApp(c))+'" target="_blank" rel="noopener" data-stop="1" title="WhatsApp: primul mesaj" style="text-decoration:none;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' +
+      '<a class="btn" href="'+esc(linkWhatsApp(c, 'dupaApel'))+'" target="_blank" rel="noopener" data-stop="1" title="WhatsApp după apel: cerem cotele și pozele" style="text-decoration:none;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>După apel</a>';
   }
   function legaRanduri(container){
     container.querySelectorAll('[data-stop]').forEach(a => a.addEventListener('click', e => e.stopPropagation()));
@@ -1163,9 +1164,11 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     return tr;
   }
 
-  function linkWhatsApp(c){
+  // tip: fără = primul mesaj (după formular); 'dupaApel' = cerem cotele și pozele, după telefon.
+  function linkWhatsApp(c, tip){
     const cifre = L.cifreTelefon(c.telefon);
-    return 'https://wa.me/' + cifre + '?text=' + encodeURIComponent(L.mesajWhatsApp(c, numeExpeditor()));
+    const text = tip === 'dupaApel' ? L.mesajWhatsAppDupaApel(c, numeExpeditor()) : L.mesajWhatsApp(c, numeExpeditor());
+    return 'https://wa.me/' + cifre + '?text=' + encodeURIComponent(text);
   }
 
   /* ---------- ACTIVITATE ---------- */
@@ -1258,7 +1261,8 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     box.innerHTML =
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
         (cifre ? '<a class="btn" href="tel:+'+cifre+'" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-phone" aria-hidden="true"></i>Sună</a>' : '') +
-        (cifre ? '<a class="btn" href="'+esc(linkWhatsApp(s))+'" target="_blank" rel="noopener" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' : '') +
+        (cifre ? '<a class="btn" href="'+esc(linkWhatsApp(s))+'" target="_blank" rel="noopener" title="WhatsApp: primul mesaj" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' : '') +
+        (cifre ? '<a class="btn" href="'+esc(linkWhatsApp(s, 'dupaApel'))+'" target="_blank" rel="noopener" title="WhatsApp după apel: cerem cotele și pozele" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>După apel</a>' : '') +
         (s.email ? '<button class="btn" id="qaEmail" style="display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-mail" aria-hidden="true"></i>Mail de răspuns</button>' : '') +
       '</div>' +
       (s.email && emailPanelOpen

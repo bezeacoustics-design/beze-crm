@@ -2,7 +2,7 @@
 // Datele sunt inventate (repo-ul e public): niciun client real aici.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { citesteMail, normalizeazaTelefon, canonic, SUPRAFATA, TIP_SPATIU, PROBLEMA, vechime, mesajEmail, mesajWhatsApp } from '../lead.js';
+import { citesteMail, normalizeazaTelefon, canonic, SUPRAFATA, TIP_SPATIU, PROBLEMA, vechime, mesajEmail, mesajWhatsApp, mesajWhatsAppDupaApel } from '../lead.js';
 
 const MAIL_CONSULTANTA = `Mesaj nou de la client pe 13 noiembrie 2026, 09:14
 Expeditor Beze Acoustics (Shopify)
@@ -136,4 +136,18 @@ test('mesajul pentru ecou păstrează fraza din răspunsul standard', () => {
   const r = mesajEmail({ nume: 'X', tipSpatiu: 'Restaurant sau spațiu comercial', suprafata: 'Peste 40 mp', problema: 'Ecou puternic' });
   assert.equal(r.subiect, 'Următorul pas pentru spațiul tău | BEZE Acoustics');
   assert.ok(r.corp.includes('zona în care stau oamenii și tavanul'));
+});
+
+test('mesajul „După apel” cere cotele și pozele, pe „dumneavoastră”, pentru orice spațiu', () => {
+  for (const tipSpatiu of [...TIP_SPATIU, '']) {
+    const w = mesajWhatsAppDupaApel({ nume: 'Ion Test', tipSpatiu, problema: 'Ecou puternic' }, 'Marius');
+    assert.ok(w.startsWith('Bună ziua, Ion Test! Sunt Marius de la BEZE Acoustics. Așa cum am vorbit la telefon'));
+    assert.ok(w.includes('lungime, lățime, înălțime'));
+    assert.ok(w.includes('din fiecare colț'));
+    for (const rau of ['[', '**', 'undefined', '—', ' tu ', 'trimite-ne']) assert.ok(!w.includes(rau), rau + ' în: ' + w.slice(0, 80));
+  }
+  const r = mesajWhatsAppDupaApel({ nume: 'X', tipSpatiu: 'Restaurant sau spațiu comercial' }, 'Marius');
+  assert.ok(r.includes('cotele spațiului') && r.includes('zona în care stau oamenii'));
+  const fara = mesajWhatsAppDupaApel({}, '');
+  assert.ok(fara.startsWith('Bună ziua! Vă scriem de la BEZE Acoustics.'));
 });
