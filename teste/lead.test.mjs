@@ -2,7 +2,7 @@
 // Datele sunt inventate (repo-ul e public): niciun client real aici.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { citesteMail, normalizeazaTelefon, canonic, SUPRAFATA, TIP_SPATIU, PROBLEMA, vechime, mesajEmail, mesajWhatsApp, mesajWhatsAppDupaApel } from '../lead.js';
+import { citesteMail, normalizeazaTelefon, canonic, SUPRAFATA, TIP_SPATIU, PROBLEMA, vechime, mesajEmail, mesajWhatsApp, mesajWhatsAppDupaApel, linkRoundcube, ROUNDCUBE } from '../lead.js';
 
 const MAIL_CONSULTANTA = `Mesaj nou de la client pe 13 noiembrie 2026, 09:14
 Expeditor Beze Acoustics (Shopify)
@@ -150,4 +150,39 @@ test('mesajul „După apel” cere cotele și pozele, pe „dumneavoastră”, 
   assert.ok(r.includes('cotele spațiului') && r.includes('zona în care stau oamenii'));
   const fara = mesajWhatsAppDupaApel({}, '');
   assert.ok(fara.startsWith('Bună ziua! Vă scriem de la BEZE Acoustics.'));
+});
+
+test('mailul pentru clientul fără telefon: am vrut să-l sunăm, îi cerem schița și un număr', () => {
+  for (const tipSpatiu of [...TIP_SPATIU, '']) {
+    for (const problema of [...PROBLEMA, '']) {
+      const c = { nume: 'Ion Test', tipSpatiu, suprafata: '10–20 mp', problema };
+      const f = mesajEmail(c, { faraTelefon: true });
+      assert.ok(f.corp.startsWith('Salutare, Ion Test!\n\nMulțumim pentru mesaj. Am vrut să te sunăm, dar în formular nu ne-ai lăsat un număr de telefon'));
+      assert.ok(f.corp.includes('Unde sunt ușa și ferestrele și ce dimensiuni au. Ajunge o schiță de mână pe o foaie'));
+      assert.ok(f.corp.includes('- Un număr de telefon, dacă preferi să vorbim.'));
+      assert.ok(f.corp.includes('lungime, lățime și înălțime'));
+      assert.equal(f.subiect, mesajEmail(c).subiect);
+      // Roundcube ia drept HTML un text cu „<” (compose.php), deci niciun mail nu are „<”.
+      for (const t of [f.corp, mesajEmail(c).corp]) {
+        for (const rau of ['[', '**', 'undefined', '—', '<']) assert.ok(!t.includes(rau), rau + ' în: ' + t.slice(0, 80));
+      }
+      assert.ok(!mesajEmail(c).corp.includes('nu ne-ai lăsat'), 'mailul obișnuit nu vorbește de telefon');
+    }
+  }
+});
+
+test('linkul de Roundcube deschide un mail nou, cu destinatarul, subiectul și textul', () => {
+  const e = mesajEmail({ nume: 'Ion Test', tipSpatiu: 'Sală de repetiții', problema: 'Bas necontrolat' }, { faraTelefon: true });
+  const u = new URL(linkRoundcube('ion.test+crm@example.com', e.subiect, e.corp));
+  assert.equal(u.origin + u.pathname, ROUNDCUBE);
+  assert.equal(u.searchParams.get('_task'), 'mail');
+  assert.equal(u.searchParams.get('_action'), 'compose');
+  assert.equal(u.searchParams.get('_to'), 'ion.test+crm@example.com');
+  assert.equal(u.searchParams.get('_subject'), e.subiect);
+  assert.equal(u.searchParams.get('_body'), e.corp);
+  // Cel mai lung mail, cu un nume lung: webmail.bezeacoustics.ro a primit pe 23 Nov 2026 linkuri de 12 000 de caractere.
+  for (const tipSpatiu of TIP_SPATIU) for (const problema of PROBLEMA) {
+    const m = mesajEmail({ nume: 'Alexandru-Constantin Popescu-Ionescu', tipSpatiu, suprafata: 'Peste 40 mp', problema }, { faraTelefon: true });
+    assert.ok(linkRoundcube('alexandru.constantin.popescu@example.com', m.subiect, m.corp).length < 8000);
+  }
 });

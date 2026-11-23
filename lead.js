@@ -208,9 +208,12 @@ const DETALII = {
 
 function fara(s) { return s.replace(/\*\*/g, ''); }
 
-export function mesajEmail(c) {
+// faraTelefon: clientul a scris doar pe mail, fără număr. Îi spunem că am vrut să-l sunăm,
+// îi cerem și schița cu ușa și ferestrele și un număr de telefon, dacă vrea să vorbim.
+export function mesajEmail(c, { faraTelefon = false } = {}) {
   const v = DETALII[varianta(c.tipSpatiu)];
-  const camera = varianta(c.tipSpatiu) === 'comercial' ? 'spațiul tău' : 'camera ta';
+  const com = varianta(c.tipSpatiu) === 'comercial';
+  const camera = com ? 'spațiul tău' : 'camera ta';
   const spatiu = SPATIU_LUNG[c.tipSpatiu] || 'un spațiu';
   const supr = SUPRAFATA_FRAZA[c.suprafata] ? ' ' + SUPRAFATA_FRAZA[c.suprafata] : '';
   const prob = PROBLEMA_FRAZA[c.problema] || '.';
@@ -218,14 +221,21 @@ export function mesajEmail(c) {
   const corp = [
     'Salutare, ' + (c.nume || '') + '!',
     '',
-    'Mulțumim pentru mesaj. Am văzut că vrei să tratezi ' + spatiu + supr + prob,
+    ...(faraTelefon
+      ? ['Mulțumim pentru mesaj. Am vrut să te sunăm, dar în formular nu ne-ai lăsat un număr de telefon, așa că îți scriem aici.', '',
+         'Am văzut că vrei să tratezi ' + spatiu + supr + prob]
+      : ['Mulțumim pentru mesaj. Am văzut că vrei să tratezi ' + spatiu + supr + prob]),
     '',
     'Ca să-ți facem o recomandare pe măsura ' + (camera === 'camera ta' ? 'camerei tale' : 'spațiului tău') + ', avem nevoie de câteva detalii:',
     '',
     '- Dimensiunile camerei: lungime, lățime și înălțime (aproximativ e suficient).',
-    '- Câteva poze, din cât mai multe unghiuri: să vedem ' + v.poze + '.',
+    ...(faraTelefon
+      ? ['- Unde sunt ușa și ferestrele și ce dimensiuni au. Ajunge o schiță de mână pe o foaie, cu cotele trecute pe ea.',
+         '- Câteva poze, din cât mai multe unghiuri, în care să se vadă ' + v.pozeScurt + '.']
+      : ['- Câteva poze, din cât mai multe unghiuri: să vedem ' + v.poze + '.']),
     '- ' + fara(v.folosire),
     '- Un buget orientativ, dacă ai deja unul în minte. Ne ajută să-ți propunem direct varianta potrivită, de la un set de panouri pe care le montezi singur până la un proiect complet.',
+    ...(faraTelefon ? ['- Un număr de telefon, dacă preferi să vorbim. Te sunăm noi, când îți convine.'] : []),
     '',
     'Cu aceste informații îți trimitem o recomandare concretă: ce panouri, câte și unde le pui.',
     '',
@@ -244,6 +254,19 @@ export function mesajEmail(c) {
     'W: https://bezeacoustics.ro/'
   ].join('\n');
   return { subiect, corp };
+}
+
+// Webmail-ul Beze e Roundcube, în cPanel (verificat pe 23 Nov 2026: pagina de login de pe
+// webmail.bezeacoustics.ro e cea din cPanel). Roundcube 1.6 completează un mail nou din _to, _subject
+// și _body din adresă (program/actions/mail/compose.php, rcmail_sendmail.php); un text cu „<”
+// l-ar lua drept HTML, de aceea mesajele nu au „<”. Dacă nu ești logat, cPanel cere parola și
+// după login deschide tot mailul completat (goto_uri din pagina lui de login).
+export const ROUNDCUBE = 'https://webmail.bezeacoustics.ro/3rdparty/roundcube/';
+export function linkRoundcube(catre, subiect, corp) {
+  return ROUNDCUBE + '?_task=mail&_action=compose' +
+    '&_to=' + encodeURIComponent(catre || '') +
+    '&_subject=' + encodeURIComponent(subiect || '') +
+    '&_body=' + encodeURIComponent(corp || '');
 }
 
 export function mesajWhatsApp(c, expeditor) {
