@@ -1175,7 +1175,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
   }
   // Mailul de răspuns, deschis direct în Roundcube; fără telefon, textul spune că am vrut să-l sunăm.
   function linkMail(c){
-    const e = L.mesajEmail(c, { faraTelefon: !L.cifreTelefon(c.telefon) });
+    const e = L.cifreTelefon(c.telefon) ? L.mesajEmail(c) : L.mesajEmailFaraTelefon(c);
     return L.linkRoundcube(c.email, e.subiect, e.corp);
   }
 
@@ -1265,7 +1265,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     if(!box) return;
     const s = formClientSnapshot();
     const cifre = L.cifreTelefon(s.telefon);
-    const e = L.mesajEmail(s, { faraTelefon: !cifre });
+    const e = cifre ? L.mesajEmail(s) : L.mesajEmailFaraTelefon(s);
     box.innerHTML =
       '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
         (cifre ? '<a class="btn" href="tel:+'+cifre+'" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-phone" aria-hidden="true"></i>Sună</a>' : '') +
