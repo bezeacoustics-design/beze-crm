@@ -293,7 +293,7 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     const cifre = L.cifreTelefon(c.telefon);
     if(!cifre){
       if(!c.email) return '';
-      return '<a class="btn" href="'+esc(linkMail(c))+'" target="_blank" rel="noopener" data-stop="1" title="Nu are telefon: mailul se deschide în Roundcube, completat" style="text-decoration:none;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-mail" aria-hidden="true"></i>Mail</a>';
+      return '<a class="btn" href="'+esc(linkMail(c))+'" data-stop="1" title="Nu are telefon: mailul se deschide în Mail, completat" style="text-decoration:none;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-mail" aria-hidden="true"></i>Mail</a>';
     }
     return '<a class="btn" href="tel:+'+cifre+'" data-stop="1" style="text-decoration:none;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-phone" aria-hidden="true"></i>Sună</a>' +
       '<a class="btn" href="'+esc(linkWhatsApp(c))+'" target="_blank" rel="noopener" data-stop="1" title="WhatsApp: primul mesaj" style="text-decoration:none;padding:6px 10px;font-size:12px;display:inline-flex;align-items:center;gap:4px;"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' +
@@ -1173,10 +1173,10 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
     const text = tip === 'dupaApel' ? L.mesajWhatsAppDupaApel(c, numeExpeditor()) : L.mesajWhatsApp(c, numeExpeditor());
     return 'https://wa.me/' + cifre + '?text=' + encodeURIComponent(text);
   }
-  // Mailul de răspuns, deschis direct în Roundcube; fără telefon, textul spune că am vrut să-l sunăm.
+  // Mailul de răspuns, deschis în Mail (contact@); fără telefon, textul spune că am vrut să-l sunăm.
   function linkMail(c){
     const e = L.cifreTelefon(c.telefon) ? L.mesajEmail(c) : L.mesajEmailFaraTelefon(c);
-    return L.linkRoundcube(c.email, e.subiect, e.corp);
+    return L.linkMailto(c.email, e.subiect, e.corp);
   }
 
   /* ---------- ACTIVITATE ---------- */
@@ -1271,12 +1271,12 @@ function numeExpeditor(){ const e = auth.currentUser && auth.currentUser.email; 
         (cifre ? '<a class="btn" href="tel:+'+cifre+'" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-phone" aria-hidden="true"></i>Sună</a>' : '') +
         (cifre ? '<a class="btn" href="'+esc(linkWhatsApp(s))+'" target="_blank" rel="noopener" title="WhatsApp: primul mesaj" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>WhatsApp</a>' : '') +
         (cifre ? '<a class="btn" href="'+esc(linkWhatsApp(s, 'dupaApel'))+'" target="_blank" rel="noopener" title="WhatsApp după apel: cerem cotele și pozele" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-brand-whatsapp" aria-hidden="true"></i>După apel</a>' : '') +
-        (s.email ? '<a class="btn" href="'+esc(L.linkRoundcube(s.email, e.subiect, e.corp))+'" target="_blank" rel="noopener" title="Se deschide în Roundcube, cu mesajul completat'+(cifre ? '' : ' (nu are telefon)')+'" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-mail" aria-hidden="true"></i>Mail de răspuns</a>' +
+        (s.email ? '<a class="btn" href="'+esc(L.linkMailto(s.email, e.subiect, e.corp))+'" title="Se deschide în Mail, cu mesajul completat'+(cifre ? '' : ' (nu are telefon)')+'" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-mail" aria-hidden="true"></i>Mail de răspuns</a>' +
           '<button class="btn" id="qaEmail" title="Textul mailului, de copiat de mână" aria-label="Textul mailului, de copiat de mână" style="display:inline-flex;align-items:center;gap:6px;"><i class="ti ti-copy" aria-hidden="true"></i></button>' : '') +
       '</div>' +
       (s.email && emailPanelOpen
         ? '<div style="margin-top:10px;padding:4px 12px 10px;background:#faf9f6;border:1px solid var(--line);border-radius:8px;">' +
-            '<div style="font-size:12px;color:var(--text2);margin:8px 0 2px;">Dacă Roundcube nu se deschide completat: „Scrie un mesaj”, apoi copiezi de aici pe rând destinatarul, subiectul și textul.</div>' +
+            '<div style="font-size:12px;color:var(--text2);margin:8px 0 2px;">Dacă Mail nu se deschide: în webmail, „Scrie un mesaj”, apoi copiezi de aici pe rând destinatarul, subiectul și textul.</div>' +
             copyRow('Către', s.email, 'cpCatre') + copyRow('Subiect', e.subiect, 'cpSubiect') + copyRow('Text', e.corp, 'cpCorp') +
           '</div>'
         : '');

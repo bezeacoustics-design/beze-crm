@@ -258,19 +258,14 @@ function mail(c, faraTelefon) {
 export function mesajEmail(c) { return mail(c, false); }
 export function mesajEmailFaraTelefon(c) { return mail(c, true); }
 
-// Webmail-ul Beze e Roundcube, în cPanel. Adresa e cea pe care o folosește Beia în Safari
-// (cp118.web365.ro:2096, același server ca webmail.bezeacoustics.ro), ca Safari să completeze
-// parola cu amprenta; partea „cpsess…” din adresa lui se schimbă la fiecare login, deci nu intră aici.
-// Roundcube 1.6 completează un mail nou din _to, _subject și _body din adresă
-// (program/actions/mail/compose.php, rcmail_sendmail.php); un text cu „<” l-ar lua drept HTML,
-// de aceea mesajele nu au „<”. Dacă nu ești logat, cPanel cere parola și după login deschide
-// mailul completat (goto_uri din pagina lui de login; verificat pe 23 Nov 2026).
-export const ROUNDCUBE = 'https://cp118.web365.ro:2096/3rdparty/roundcube/';
-export function linkRoundcube(catre, subiect, corp) {
-  return ROUNDCUBE + '?_task=mail&_action=compose' +
-    '&_to=' + encodeURIComponent(catre || '') +
-    '&_subject=' + encodeURIComponent(subiect || '') +
-    '&_body=' + encodeURIComponent(corp || '');
+// Mailul se deschide în aplicația Mail de pe Mac (contul contact@), printr-un link mailto: cu destinatarul,
+// subiectul și textul (RFC 6068: rândurile noi ca %0D%0A). Roundcube direct nu merge pe găzduirea Beze
+// (probat pe 23 Nov 2026 pe contact@, cu un client inventat): cPanel cere parola la orice link fără codul
+// de sesiune „cpsess…”, iar după login Roundcube se loghează singur și deschide Inbox-ul, fără mailul cerut.
+export function linkMailto(catre, subiect, corp) {
+  const enc = t => encodeURIComponent(String(t || '').replace(/\r?\n/g, '\r\n'));
+  return 'mailto:' + encodeURIComponent(catre || '').replace(/%40/g, '@') +
+    '?subject=' + enc(subiect) + '&body=' + enc(corp);
 }
 
 export function mesajWhatsApp(c, expeditor) {

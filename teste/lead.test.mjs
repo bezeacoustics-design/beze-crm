@@ -2,7 +2,7 @@
 // Datele sunt inventate (repo-ul e public): niciun client real aici.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { citesteMail, normalizeazaTelefon, canonic, SUPRAFATA, TIP_SPATIU, PROBLEMA, vechime, mesajEmail, mesajWhatsApp, mesajWhatsAppDupaApel, mesajEmailFaraTelefon, linkRoundcube, ROUNDCUBE } from '../lead.js';
+import { citesteMail, normalizeazaTelefon, canonic, SUPRAFATA, TIP_SPATIU, PROBLEMA, vechime, mesajEmail, mesajWhatsApp, mesajWhatsAppDupaApel, mesajEmailFaraTelefon, linkMailto } from '../lead.js';
 
 const MAIL_CONSULTANTA = `Mesaj nou de la client pe 13 noiembrie 2026, 09:14
 Expeditor Beze Acoustics (Shopify)
@@ -183,21 +183,18 @@ test('mailul pentru clientul fără telefon: pe „dumneavoastră”, am vrut s�
   assert.ok(mesajEmailFaraTelefon({ tipSpatiu: 'Birou' }).corp.includes('Dimensiunile spațiului'));
 });
 
-test('linkul de Roundcube deschide un mail nou, cu destinatarul, subiectul și textul', () => {
+test('linkul mailto deschide un mail nou, cu destinatarul, subiectul și textul', () => {
   const e = mesajEmailFaraTelefon({ nume: 'Ion Test', tipSpatiu: 'Sală de repetiții', problema: 'Bas necontrolat' });
-  const u = new URL(linkRoundcube('ion.test+crm@example.com', e.subiect, e.corp));
-  assert.equal(u.origin + u.pathname, ROUNDCUBE);
-  assert.equal(ROUNDCUBE, 'https://cp118.web365.ro:2096/3rdparty/roundcube/');
-  assert.equal(u.searchParams.get('_task'), 'mail');
-  assert.equal(u.searchParams.get('_action'), 'compose');
-  assert.equal(u.searchParams.get('_to'), 'ion.test+crm@example.com');
-  assert.equal(u.searchParams.get('_subject'), e.subiect);
-  assert.equal(u.searchParams.get('_body'), e.corp);
-  // Cel mai lung mail, cu un nume lung: serverul de webmail a primit pe 23 Nov 2026 linkuri de 12 000 de caractere.
-  for (const tipSpatiu of TIP_SPATIU) for (const problema of PROBLEMA) {
-    const m = mesajEmailFaraTelefon({ nume: 'Alexandru-Constantin Popescu-Ionescu', tipSpatiu, suprafata: 'Peste 40 mp', problema });
-    assert.ok(linkRoundcube('alexandru.constantin.popescu@example.com', m.subiect, m.corp).length < 8000);
-  }
+  const link = linkMailto('ion.test+crm@example.com', e.subiect, e.corp);
+  assert.ok(link.startsWith('mailto:ion.test%2Bcrm@example.com?subject='));
+  const u = new URL(link);
+  assert.equal(u.protocol, 'mailto:');
+  assert.equal(decodeURIComponent(u.pathname), 'ion.test+crm@example.com');
+  // URLSearchParams ar citi „+” ca spațiu; mailto folosește doar %20 (RFC 6068), deci decodăm direct.
+  const p = Object.fromEntries(u.search.slice(1).split('&').map(kv => kv.split('=').map(decodeURIComponent)));
+  assert.equal(p.subject, e.subiect);
+  assert.equal(p.body, e.corp.replace(/\n/g, '\r\n'));
+  assert.ok(!link.includes(' ') && link.includes('%0D%0A') && !link.replace(/%0D%0A/g, '').includes('%0A'), 'rândurile noi sunt %0D%0A');
 });
 
 test('toate mesajele pentru clienți sunt pe „dumneavoastră”', () => {
