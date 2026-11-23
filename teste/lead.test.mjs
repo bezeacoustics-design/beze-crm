@@ -111,6 +111,9 @@ test('vechimea lead-ului', () => {
   assert.equal(vechime('', acum), '');
 });
 
+// Formele de „tu” care nu au voie să apară într-un mesaj pe „dumneavoastră” (cuvinte întregi).
+const TU = /(^|[^\p{L}])(tu|ta|tău|tale|tine|îți|ți|te|ești|vrei|poți|ai|folosești|montezi|pui|preferi|asculți|știi|spune-ne|trimite-ne|Salut|Salutare)(?=[^\p{L}]|$)/u;
+
 test('mesajele de răspuns sunt complete, fără paranteze rămase', () => {
   for (const tipSpatiu of [...TIP_SPATIU, '']) {
     for (const problema of [...PROBLEMA, '']) {
@@ -123,18 +126,21 @@ test('mesajele de răspuns sunt complete, fără paranteze rămase', () => {
         assert.ok(!t.includes('undefined'), 'undefined în text');
         assert.ok(!t.includes('—'), 'liniuță lungă în text');
       }
-      assert.ok(e.corp.startsWith('Salutare, Ion Test!'));
-      assert.ok(w.startsWith('Salut, Ion Test! Sunt Marius de la BEZE Acoustics.'));
+      assert.ok(e.corp.startsWith('Bună ziua, Ion Test!\n\nVă mulțumim pentru mesaj.'));
+      assert.ok(w.startsWith('Bună ziua, Ion Test! Sunt Marius de la BEZE Acoustics. Am primit mesajul dumneavoastră'));
+      assert.ok(w.includes('vă rog să ne trimiteți') && w.endsWith('Mulțumesc!'));
     }
   }
+  const fara = mesajWhatsApp({}, '');
+  assert.ok(fara.startsWith('Bună ziua! Vă scriem de la BEZE Acoustics.') && fara.includes('vă rugăm') && fara.endsWith('Vă mulțumim!'));
 });
 
 test('mesajul pentru ecou păstrează fraza din răspunsul standard', () => {
   const e = mesajEmail({ nume: 'Ion Test', tipSpatiu: 'Studio sau home studio', suprafata: '21–40 mp', problema: 'Ecou puternic' });
-  assert.ok(e.corp.includes('Am văzut că vrei să tratezi un studio / home studio de 21–40 m² și că problema principală este ecoul.'));
-  assert.equal(e.subiect, 'Următorul pas pentru camera ta | BEZE Acoustics');
+  assert.ok(e.corp.includes('Am văzut că doriți să tratați un studio / home studio de 21–40 m² și că problema principală este ecoul.'));
+  assert.equal(e.subiect, 'Următorul pas pentru camera dumneavoastră | BEZE Acoustics');
   const r = mesajEmail({ nume: 'X', tipSpatiu: 'Restaurant sau spațiu comercial', suprafata: 'Peste 40 mp', problema: 'Ecou puternic' });
-  assert.equal(r.subiect, 'Următorul pas pentru spațiul tău | BEZE Acoustics');
+  assert.equal(r.subiect, 'Următorul pas pentru spațiul dumneavoastră | BEZE Acoustics');
   assert.ok(r.corp.includes('zona în care stau oamenii și tavanul'));
 });
 
@@ -151,9 +157,6 @@ test('mesajul „După apel” cere cotele și pozele, pe „dumneavoastră”, 
   const fara = mesajWhatsAppDupaApel({}, '');
   assert.ok(fara.startsWith('Bună ziua! Vă scriem de la BEZE Acoustics.'));
 });
-
-// Formele de „tu” care nu au voie să apară într-un mesaj pe „dumneavoastră” (cuvinte întregi).
-const TU = /(^|[^\p{L}])(tu|ta|tău|tale|tine|îți|ți|te|ești|vrei|poți|ai|folosești|montezi|pui|preferi|asculți|știi|spune-ne|trimite-ne|Salut|Salutare)(?=[^\p{L}]|$)/u;
 
 test('mailul pentru clientul fără telefon: pe „dumneavoastră”, am vrut să-l sunăm, îi cerem schița și un număr', () => {
   for (const tipSpatiu of [...TIP_SPATIU, '']) {
@@ -193,5 +196,21 @@ test('linkul de Roundcube deschide un mail nou, cu destinatarul, subiectul și t
   for (const tipSpatiu of TIP_SPATIU) for (const problema of PROBLEMA) {
     const m = mesajEmailFaraTelefon({ nume: 'Alexandru-Constantin Popescu-Ionescu', tipSpatiu, suprafata: 'Peste 40 mp', problema });
     assert.ok(linkRoundcube('alexandru.constantin.popescu@example.com', m.subiect, m.corp).length < 8000);
+  }
+});
+
+test('toate mesajele pentru clienți sunt pe „dumneavoastră”', () => {
+  for (const tipSpatiu of [...TIP_SPATIU, '']) {
+    for (const problema of [...PROBLEMA, '']) {
+      for (const nume of ['Ion Test', '']) {
+        const c = { nume, tipSpatiu, suprafata: '10–20 mp', problema };
+        const texte = [mesajEmail(c).subiect, mesajEmail(c).corp, mesajEmailFaraTelefon(c).subiect, mesajEmailFaraTelefon(c).corp,
+          mesajWhatsApp(c, 'Marius'), mesajWhatsApp(c, ''), mesajWhatsAppDupaApel(c, 'Marius'), mesajWhatsAppDupaApel(c, '')];
+        for (const t of texte) {
+          const m = t.match(TU);
+          assert.ok(!m, 'formă de „tu”: „' + (m && m[2]) + '” în: ' + t.slice(0, 100));
+        }
+      }
+    }
   }
 });

@@ -155,7 +155,7 @@ export function vechime(iso, acum = new Date()) {
 }
 
 /* ---------- Textele de răspuns ----------
-   Pornesc de la ~/beze-social/reclame/raspuns-lead.md. Frazele despre problemă, altele decât ecoul,
+   Pornesc de la ~/beze-social/reclame/raspuns-lead.md, trecute pe „dumneavoastră” (23 Nov 2026). Frazele despre problemă, altele decât ecoul,
    și varianta pentru sala de repetiții sunt scrise nou, de citit de Beia. */
 
 const SPATIU_LUNG = {
@@ -172,20 +172,21 @@ const SPATIU_SCURT = {
   'Cameră pentru podcast': 'camera de podcast',
   'Cameră pentru gaming sau streaming': 'camera de gaming',
   'Birou': 'birou',
-  'Restaurant sau spațiu comercial': 'spațiul tău',
+  'Restaurant sau spațiu comercial': 'spațiul dumneavoastră',
   'Sală de repetiții': 'sala de repetiții',
   'Home cinema': 'home cinema'
 };
 const SUPRAFATA_FRAZA = {
   'Sub 10 mp': 'de sub 10 m²', '10–20 mp': 'de 10–20 m²', '21–40 mp': 'de 21–40 m²', 'Peste 40 mp': 'de peste 40 m²'
 };
+// Toate mesajele pentru clienți sunt pe „dumneavoastră” (Beia, 23 Nov 2026).
 const PROBLEMA_FRAZA = {
   'Ecou puternic': ' și că problema principală este ecoul. Asta e o veste bună, pentru că ecoul se rezolvă bine cu tratament acustic, dacă panourile sunt alese și puse unde trebuie.',
   'Voce neclară': ' și că vocea se aude neclar. Ecoul și reflexiile din cameră strică claritatea vocii, iar pe ele le controlează tratamentul acustic, dacă panourile sunt alese și puse unde trebuie.',
   'Bas necontrolat': ' și că basul e greu de controlat. La bas contează dimensiunile camerei și locul boxelor, nu doar panourile, de aceea vrem să vedem întâi camera.',
-  'Mixurile sună diferit în alte locuri': ' și că mixurile sună diferit în alte locuri. Camera în care asculți colorează sunetul, iar tratamentul acustic te ajută să auzi mai corect ce e de fapt în mix.',
-  'Nu știu ce tratament îmi trebuie': ' și că nu știi încă ce tratament îți trebuie. E normal: de aceea ne uităm întâi la cameră și abia apoi îți spunem ce are sens pentru ea.',
-  'Izolare (zgomot de la sau către vecini)': ' și că te deranjează zgomotul de la vecini sau către ei. Panourile acustice controlează sunetul din cameră, dar nu opresc sunetul să treacă prin pereți: asta e izolare fonică, o lucrare diferită, pe care o discutăm separat.'
+  'Mixurile sună diferit în alte locuri': ' și că mixurile sună diferit în alte locuri. Camera în care ascultați colorează sunetul, iar tratamentul acustic vă ajută să auziți mai corect ce e de fapt în mix.',
+  'Nu știu ce tratament îmi trebuie': ' și că nu știți încă ce tratament vă trebuie. E normal: de aceea ne uităm întâi la cameră și abia apoi vă spunem ce are sens pentru ea.',
+  'Izolare (zgomot de la sau către vecini)': ' și că vă deranjează zgomotul de la vecini sau către ei. Panourile acustice controlează sunetul din cameră, dar nu opresc sunetul să treacă prin pereți: asta e izolare fonică, o lucrare diferită, pe care o discutăm separat.'
 };
 const PROBLEMA_SCURT = {
   'Ecou puternic': 'ecoul', 'Voce neclară': 'vocea care se aude neclar', 'Bas necontrolat': 'basul',
@@ -200,96 +201,45 @@ function varianta(tip) {
   return 'studio';
 }
 const DETALII = {
-  studio: { poze: 'unde sunt ușa și ferestrele și cum sunt așezate biroul și monitoarele', folosire: '**Pentru ce folosești camera cel mai des:** mix, voce, instrumente, podcast.', pozeScurt: 'biroul și monitoarele', ceFaci: 'ce faci cel mai des acolo' },
-  comercial: { poze: 'unde sunt ușa și ferestrele, zona în care stau oamenii și tavanul', folosire: '**Câți oameni sunt de obicei înăuntru.**', pozeScurt: 'zona în care stau oamenii și tavanul', ceFaci: 'câți oameni sunt de obicei înăuntru' },
-  cinema: { poze: 'unde sunt ușa și ferestrele, ecranul, boxele și locurile', folosire: '**Câte locuri are sala și dacă e nevoie și de izolare față de restul casei.**', pozeScurt: 'ecranul, boxele și locurile', ceFaci: 'câte locuri are sala' },
-  repetitii: { poze: 'unde sunt ușa și ferestrele și unde stau tobele, amplificatoarele și oamenii', folosire: '**Cine cântă acolo:** câți oameni și ce instrumente.', pozeScurt: 'tobele, amplificatoarele și locul fiecăruia', ceFaci: 'câți oameni cântă și ce instrumente' }
+  studio: { poze: 'unde sunt ușa și ferestrele și cum sunt așezate biroul și monitoarele', folosire: 'Pentru ce folosiți camera cel mai des: mix, voce, instrumente, podcast.', pozeScurt: 'biroul și monitoarele', ceFaci: 'ce faceți cel mai des acolo' },
+  comercial: { poze: 'unde sunt ușa și ferestrele, zona în care stau oamenii și tavanul', folosire: 'Câți oameni sunt de obicei înăuntru.', pozeScurt: 'zona în care stau oamenii și tavanul', ceFaci: 'câți oameni sunt de obicei înăuntru' },
+  cinema: { poze: 'unde sunt ușa și ferestrele, ecranul, boxele și locurile', folosire: 'Câte locuri are sala și dacă e nevoie și de izolare față de restul casei.', pozeScurt: 'ecranul, boxele și locurile', ceFaci: 'câte locuri are sala' },
+  repetitii: { poze: 'unde sunt ușa și ferestrele și unde stau tobele, amplificatoarele și oamenii', folosire: 'Cine cântă acolo: câți oameni și ce instrumente.', pozeScurt: 'tobele, amplificatoarele și locul fiecăruia', ceFaci: 'câți oameni cântă și ce instrumente' }
 };
 
-function fara(s) { return s.replace(/\*\*/g, ''); }
-
-export function mesajEmail(c) {
-  const v = DETALII[varianta(c.tipSpatiu)];
-  const camera = varianta(c.tipSpatiu) === 'comercial' ? 'spațiul tău' : 'camera ta';
-  const spatiu = SPATIU_LUNG[c.tipSpatiu] || 'un spațiu';
-  const supr = SUPRAFATA_FRAZA[c.suprafata] ? ' ' + SUPRAFATA_FRAZA[c.suprafata] : '';
-  const prob = PROBLEMA_FRAZA[c.problema] || '.';
-  const subiect = 'Următorul pas pentru ' + camera + ' | BEZE Acoustics';
-  const corp = [
-    'Salutare, ' + (c.nume || '') + '!',
-    '',
-    'Mulțumim pentru mesaj. Am văzut că vrei să tratezi ' + spatiu + supr + prob,
-    '',
-    'Ca să-ți facem o recomandare pe măsura ' + (camera === 'camera ta' ? 'camerei tale' : 'spațiului tău') + ', avem nevoie de câteva detalii:',
-    '',
-    '- Dimensiunile camerei: lungime, lățime și înălțime (aproximativ e suficient).',
-    '- Câteva poze, din cât mai multe unghiuri: să vedem ' + v.poze + '.',
-    '- ' + fara(v.folosire),
-    '- Un buget orientativ, dacă ai deja unul în minte. Ne ajută să-ți propunem direct varianta potrivită, de la un set de panouri pe care le montezi singur până la un proiect complet.',
-    '',
-    'Cu aceste informații îți trimitem o recomandare concretă: ce panouri, câte și unde le pui.',
-    '',
-    'Dacă vrei să mergem mai departe, poți alege studiul acustic la fața locului. Venim la tine, facem măsurători acustice și luăm cotele camerei. Pe baza lor primești o analiză acustică a spațiului tău și un plan cu panourile amplasate în camera ta.',
-    '',
-    'Studiul costă 500 de lei. În București și Ilfov deplasarea e inclusă. Pentru alte orașe, costul deplasării îl stabilim împreună, în funcție de distanță. Dacă te interesează, spune-ne din ce oraș ești.',
-    '',
-    'Ne poți răspunde direct la acest mail sau ne poți suna/scrie la 0720 505 867.',
-    '',
-    '-- ',
-    'Cu drag,',
-    'Echipa BEZE Acoustics',
-    '',
-    'T: +40720505867',
-    'E: contact@bezeacoustics.ro',
-    'W: https://bezeacoustics.ro/'
-  ].join('\n');
-  return { subiect, corp };
-}
-
-// Clientul a scris doar pe mail, fără număr: îi spunem că am vrut să-l sunăm și îi cerem detaliile,
-// plus schița cu ușa și ferestrele și un număr de telefon. Pe „dumneavoastră” (Beia, 23 Nov 2026).
-const PROBLEMA_FRAZA_DVS = {
-  'Ecou puternic': PROBLEMA_FRAZA['Ecou puternic'],
-  'Voce neclară': PROBLEMA_FRAZA['Voce neclară'],
-  'Bas necontrolat': PROBLEMA_FRAZA['Bas necontrolat'],
-  'Mixurile sună diferit în alte locuri': ' și că mixurile sună diferit în alte locuri. Camera în care ascultați colorează sunetul, iar tratamentul acustic vă ajută să auziți mai corect ce e de fapt în mix.',
-  'Nu știu ce tratament îmi trebuie': ' și că nu știți încă ce tratament vă trebuie. E normal: de aceea ne uităm întâi la cameră și abia apoi vă spunem ce are sens pentru ea.',
-  'Izolare (zgomot de la sau către vecini)': ' și că vă deranjează zgomotul de la vecini sau către ei. Panourile acustice controlează sunetul din cameră, dar nu opresc sunetul să treacă prin pereți: asta e izolare fonică, o lucrare diferită, pe care o discutăm separat.'
-};
-const FOLOSIRE_DVS = {
-  studio: 'Pentru ce folosiți camera cel mai des: mix, voce, instrumente, podcast.',
-  comercial: 'Câți oameni sunt de obicei înăuntru.',
-  cinema: 'Câte locuri are sala și dacă e nevoie și de izolare față de restul casei.',
-  repetitii: 'Cine cântă acolo: câți oameni și ce instrumente.'
-};
-
-export function mesajEmailFaraTelefon(c) {
+// Mailul de răspuns. faraTelefon: clientul a scris doar pe mail, fără număr; îi spunem că am vrut
+// să-l sunăm și îi cerem în plus schița cu ușa și ferestrele și un număr de telefon.
+function mail(c, faraTelefon) {
   const tip = varianta(c.tipSpatiu);
   const v = DETALII[tip];
   const com = tip === 'comercial';
+  const loc = com ? 'spațiul' : 'camera', alLocului = com ? 'spațiului' : 'camerei';
   const spatiu = SPATIU_LUNG[c.tipSpatiu] || 'un spațiu';
   const supr = SUPRAFATA_FRAZA[c.suprafata] ? ' ' + SUPRAFATA_FRAZA[c.suprafata] : '';
-  const prob = PROBLEMA_FRAZA_DVS[c.problema] || '.';
-  const subiect = 'Următorul pas pentru ' + (com ? 'spațiul' : 'camera') + ' dumneavoastră | BEZE Acoustics';
+  const prob = PROBLEMA_FRAZA[c.problema] || '.';
+  const subiect = 'Următorul pas pentru ' + loc + ' dumneavoastră | BEZE Acoustics';
   const corp = [
     c.nume ? 'Bună ziua, ' + c.nume + '!' : 'Bună ziua!',
     '',
-    'Vă mulțumim pentru mesaj. Am vrut să vă sunăm, dar în formular nu ne-ați lăsat un număr de telefon, așa că vă scriem aici.',
+    ...(faraTelefon
+      ? ['Vă mulțumim pentru mesaj. Am vrut să vă sunăm, dar în formular nu ne-ați lăsat un număr de telefon, așa că vă scriem aici.', '',
+         'Am văzut că doriți să tratați ' + spatiu + supr + prob]
+      : ['Vă mulțumim pentru mesaj. Am văzut că doriți să tratați ' + spatiu + supr + prob]),
     '',
-    'Am văzut că doriți să tratați ' + spatiu + supr + prob,
+    'Ca să vă facem o recomandare pe măsura ' + alLocului + ' dumneavoastră, avem nevoie de câteva detalii:',
     '',
-    'Ca să vă facem o recomandare pe măsura ' + (com ? 'spațiului' : 'camerei') + ' dumneavoastră, avem nevoie de câteva detalii:',
-    '',
-    '- Dimensiunile ' + (com ? 'spațiului' : 'camerei') + ': lungime, lățime și înălțime (aproximativ e suficient).',
-    '- Unde sunt ușa și ferestrele și ce dimensiuni au. Ajunge o schiță de mână pe o foaie, cu cotele trecute pe ea.',
-    '- Câteva poze, din cât mai multe unghiuri, în care să se vadă ' + v.pozeScurt + '.',
-    '- ' + FOLOSIRE_DVS[tip],
+    '- Dimensiunile ' + alLocului + ': lungime, lățime și înălțime (aproximativ e suficient).',
+    ...(faraTelefon
+      ? ['- Unde sunt ușa și ferestrele și ce dimensiuni au. Ajunge o schiță de mână pe o foaie, cu cotele trecute pe ea.',
+         '- Câteva poze, din cât mai multe unghiuri, în care să se vadă ' + v.pozeScurt + '.']
+      : ['- Câteva poze, din cât mai multe unghiuri: să vedem ' + v.poze + '.']),
+    '- ' + v.folosire,
     '- Un buget orientativ, dacă aveți deja unul în minte. Ne ajută să vă propunem direct varianta potrivită, de la un set de panouri pe care le montați chiar dumneavoastră până la un proiect complet.',
-    '- Un număr de telefon, dacă preferați să vorbim. Vă sunăm noi, când vă convine.',
+    ...(faraTelefon ? ['- Un număr de telefon, dacă preferați să vorbim. Vă sunăm noi, când vă convine.'] : []),
     '',
     'Cu aceste informații vă trimitem o recomandare concretă: ce panouri, câte și unde le puneți.',
     '',
-    'Dacă doriți să mergem mai departe, puteți alege studiul acustic la fața locului. Venim la dumneavoastră, facem măsurători acustice și luăm cotele ' + (com ? 'spațiului' : 'camerei') + '. Pe baza lor primiți o analiză acustică și un plan cu panourile amplasate în ' + (com ? 'spațiul' : 'camera') + ' dumneavoastră.',
+    'Dacă doriți să mergem mai departe, puteți alege studiul acustic la fața locului. Venim la dumneavoastră, facem măsurători acustice și luăm cotele ' + alLocului + '. Pe baza lor primiți o analiză acustică și un plan cu panourile amplasate în ' + loc + ' dumneavoastră.',
     '',
     'Studiul costă 500 de lei. În București și Ilfov deplasarea e inclusă. Pentru alte orașe, costul deplasării îl stabilim împreună, în funcție de distanță. Dacă vă interesează, spuneți-ne din ce oraș sunteți.',
     '',
@@ -305,6 +255,8 @@ export function mesajEmailFaraTelefon(c) {
   ].join('\n');
   return { subiect, corp };
 }
+export function mesajEmail(c) { return mail(c, false); }
+export function mesajEmailFaraTelefon(c) { return mail(c, true); }
 
 // Webmail-ul Beze e Roundcube, în cPanel (verificat pe 23 Nov 2026: pagina de login de pe
 // webmail.bezeacoustics.ro e cea din cPanel). Roundcube 1.6 completează un mail nou din _to, _subject
@@ -323,16 +275,18 @@ export function mesajWhatsApp(c, expeditor) {
   const v = DETALII[varianta(c.tipSpatiu)];
   const desprece = PROBLEMA_SCURT[c.problema];
   const unde = SPATIU_SCURT[c.tipSpatiu];
-  let primit = 'Am primit mesajul tău';
+  let primit = 'Am primit mesajul dumneavoastră';
   if (desprece) primit += ' despre ' + desprece + (unde ? ' din ' + unde : '');
   else if (unde) primit += ' despre ' + unde;
+  const salut = c.nume ? 'Bună ziua, ' + c.nume + '!' : 'Bună ziua!';
+  const cine = expeditor ? 'Sunt ' + expeditor + ' de la BEZE Acoustics.' : 'Vă scriem de la BEZE Acoustics.';
   return [
-    'Salut, ' + (c.nume || '') + '! Sunt ' + (expeditor || 'echipa') + ' de la BEZE Acoustics. ' + primit + '. Ca să-ți dăm o recomandare concretă, trimite-ne te rog:',
+    salut + ' ' + cine + ' ' + primit + '. Ca să vă dăm o recomandare concretă, ' + (expeditor ? 'vă rog' : 'vă rugăm') + ' să ne trimiteți:',
     '• dimensiunile camerei (L × l × înălțime)',
     '• câteva poze din mai multe unghiuri, să vedem ușa, ferestrele, ' + v.pozeScurt,
     '• ' + v.ceFaci,
     '',
-    'Cu ele îți spunem ce panouri, câte și unde. Dacă vrei, putem veni și noi să măsurăm camera: primești o analiză acustică și un plan cu panourile în spațiul tău. Studiul costă 500 de lei, cu deplasarea inclusă în București și Ilfov. Din ce oraș ești? Mersi!'
+    'Cu ele vă spunem ce panouri, câte și unde. Dacă doriți, putem veni și noi să măsurăm camera: primiți o analiză acustică și un plan cu panourile în spațiul dumneavoastră. Studiul costă 500 de lei, cu deplasarea inclusă în București și Ilfov. Din ce oraș sunteți? ' + (expeditor ? 'Mulțumesc!' : 'Vă mulțumim!')
   ].join('\n');
 }
 
