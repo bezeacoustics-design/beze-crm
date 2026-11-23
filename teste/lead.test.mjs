@@ -164,9 +164,12 @@ test('mailul pentru clientul fără telefon: pe „dumneavoastră”, am vrut s�
       const c = { nume: 'Ion Test', tipSpatiu, suprafata: '10–20 mp', problema };
       const f = mesajEmailFaraTelefon(c);
       assert.ok(f.corp.startsWith('Bună ziua, Ion Test!\n\nVă mulțumim pentru mesaj. Am vrut să vă sunăm, dar în formular nu ne-ați lăsat un număr de telefon'));
-      assert.ok(f.corp.includes('Unde sunt ușa și ferestrele și ce dimensiuni au. Ajunge o schiță de mână pe o foaie'));
-      assert.ok(f.corp.includes('- Un număr de telefon, dacă preferați să vorbim.'));
-      assert.ok(f.corp.includes('lungime, lățime și înălțime'));
+      assert.ok(f.corp.includes('(lungime, lățime, înălțime) și unde sunt ușa și ferestrele, cu dimensiunile lor. Ajunge o schiță de mână pe o foaie'));
+      assert.ok(f.corp.includes('sau un releveu, e perfect, ne trimiteți direct planul.'));
+      assert.ok(f.corp.includes('- Un număr de telefon, dacă preferați să vorbim. Vă sunăm noi, când aveți timp.'));
+      assert.ok(!f.corp.includes('Asta e o veste bună') && !f.corp.includes('E normal') && !f.corp.includes('Panourile acustice controlează'), 'fără explicația de după problemă');
+      assert.ok(!/Pentru ce folosiți|Câți oameni sunt|Câte locuri are|Cine cântă/.test(f.corp), 'fără rândul despre folosire');
+      assert.ok(mesajEmail(c).corp.includes('sau un releveu, e perfect'), 'și mailul cu telefon are punctul cu planul');
       assert.ok(f.subiect.endsWith(' dumneavoastră | BEZE Acoustics'));
       for (const t of [f.subiect, f.corp]) {
         const m = t.match(TU);
@@ -181,6 +184,42 @@ test('mailul pentru clientul fără telefon: pe „dumneavoastră”, am vrut s�
   }
   assert.ok(mesajEmailFaraTelefon({}).corp.startsWith('Bună ziua!\n\n'));
   assert.ok(mesajEmailFaraTelefon({ tipSpatiu: 'Birou' }).corp.includes('Dimensiunile spațiului'));
+});
+
+// Forma aprobată de Beia pe 23 Nov 2026 (un client real cu birou; aici cu nume inventat).
+test('mailul fără telefon, birou, „nu știu”: exact textul aprobat de Beia', () => {
+  const f = mesajEmailFaraTelefon({ nume: 'Ion Test', tipSpatiu: 'Birou', suprafata: 'Peste 40 mp', problema: 'Nu știu ce tratament îmi trebuie' });
+  assert.equal(f.subiect, 'Următorul pas pentru spațiul dumneavoastră | BEZE Acoustics');
+  assert.equal(f.corp, [
+    'Bună ziua, Ion Test!',
+    '',
+    'Vă mulțumim pentru mesaj. Am vrut să vă sunăm, dar în formular nu ne-ați lăsat un număr de telefon, așa că vă scriem aici.',
+    '',
+    'Am văzut că doriți să tratați un birou de peste 40 m² și că nu știți încă ce tratament vă trebuie.',
+    '',
+    'Ca să vă facem o recomandare pe măsura spațiului dumneavoastră, avem nevoie de câteva detalii:',
+    '',
+    '- Dimensiunile spațiului (lungime, lățime, înălțime) și unde sunt ușa și ferestrele, cu dimensiunile lor. Ajunge o schiță de mână pe o foaie, cu cotele trecute pe ea. Dacă aveți un plan al spațiului sau un releveu, e perfect, ne trimiteți direct planul.',
+    '- Câteva poze, din cât mai multe unghiuri, în care să se vadă zona în care stau oamenii și tavanul.',
+    '- Un buget orientativ, dacă aveți deja unul în minte. Ne ajută să vă propunem direct varianta potrivită, de la un set de panouri pe care le montați chiar dumneavoastră până la un proiect complet.',
+    '- Un număr de telefon, dacă preferați să vorbim. Vă sunăm noi, când aveți timp.',
+    '',
+    'Cu aceste informații vă trimitem o recomandare concretă: ce panouri, câte și unde le puneți.',
+    '',
+    'Dacă doriți să mergem mai departe, puteți alege studiul acustic la fața locului. Venim la dumneavoastră, facem măsurători acustice și luăm cotele spațiului. Pe baza lor primiți o analiză acustică și un plan cu panourile amplasate în spațiul dumneavoastră.',
+    '',
+    'Studiul costă 500 de lei. În București și Ilfov deplasarea e inclusă. Pentru alte orașe, costul deplasării îl stabilim împreună, în funcție de distanță. Dacă vă interesează, spuneți-ne din ce oraș sunteți.',
+    '',
+    'Ne puteți răspunde direct la acest mail sau ne puteți suna sau scrie la 0720 505 867.',
+    '',
+    '-- ',
+    'Cu drag,',
+    'Echipa BEZE Acoustics',
+    '',
+    'T: +40720505867',
+    'E: contact@bezeacoustics.ro',
+    'W: https://bezeacoustics.ro/'
+  ].join('\n'));
 });
 
 test('linkul mailto deschide un mail nou, cu destinatarul, subiectul și textul', () => {

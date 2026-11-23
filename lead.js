@@ -208,7 +208,8 @@ const DETALII = {
 };
 
 // Mailul de răspuns. faraTelefon: clientul a scris doar pe mail, fără număr; îi spunem că am vrut
-// să-l sunăm și îi cerem în plus schița cu ușa și ferestrele și un număr de telefon.
+// să-l sunăm și îi cerem un număr de telefon; mailul e mai scurt (forma aprobată de Beia pe 23 Nov 2026,
+// păstrată în teste/lead.test.mjs).
 function mail(c, faraTelefon) {
   const tip = varianta(c.tipSpatiu);
   const v = DETALII[tip];
@@ -216,7 +217,9 @@ function mail(c, faraTelefon) {
   const loc = com ? 'spațiul' : 'camera', alLocului = com ? 'spațiului' : 'camerei';
   const spatiu = SPATIU_LUNG[c.tipSpatiu] || 'un spațiu';
   const supr = SUPRAFATA_FRAZA[c.suprafata] ? ' ' + SUPRAFATA_FRAZA[c.suprafata] : '';
-  const prob = PROBLEMA_FRAZA[c.problema] || '.';
+  // Fără telefon: doar fraza cu problema, fără explicația de după (Beia, 23 Nov 2026).
+  const fraza = PROBLEMA_FRAZA[c.problema];
+  const prob = fraza ? (faraTelefon ? fraza.match(/^[^.]*\./)[0] : fraza) : '.';
   const subiect = 'Următorul pas pentru ' + loc + ' dumneavoastră | BEZE Acoustics';
   const corp = [
     c.nume ? 'Bună ziua, ' + c.nume + '!' : 'Bună ziua!',
@@ -228,14 +231,11 @@ function mail(c, faraTelefon) {
     '',
     'Ca să vă facem o recomandare pe măsura ' + alLocului + ' dumneavoastră, avem nevoie de câteva detalii:',
     '',
-    '- Dimensiunile ' + alLocului + ': lungime, lățime și înălțime (aproximativ e suficient).',
-    ...(faraTelefon
-      ? ['- Unde sunt ușa și ferestrele și ce dimensiuni au. Ajunge o schiță de mână pe o foaie, cu cotele trecute pe ea.',
-         '- Câteva poze, din cât mai multe unghiuri, în care să se vadă ' + v.pozeScurt + '.']
-      : ['- Câteva poze, din cât mai multe unghiuri: să vedem ' + v.poze + '.']),
-    '- ' + v.folosire,
+    '- Dimensiunile ' + alLocului + ' (lungime, lățime, înălțime) și unde sunt ușa și ferestrele, cu dimensiunile lor. Ajunge o schiță de mână pe o foaie, cu cotele trecute pe ea. Dacă aveți un plan al ' + alLocului + ' sau un releveu, e perfect, ne trimiteți direct planul.',
+    '- Câteva poze, din cât mai multe unghiuri, în care să se vadă ' + v.pozeScurt + '.',
+    ...(faraTelefon ? [] : ['- ' + v.folosire]),
     '- Un buget orientativ, dacă aveți deja unul în minte. Ne ajută să vă propunem direct varianta potrivită, de la un set de panouri pe care le montați chiar dumneavoastră până la un proiect complet.',
-    ...(faraTelefon ? ['- Un număr de telefon, dacă preferați să vorbim. Vă sunăm noi, când vă convine.'] : []),
+    ...(faraTelefon ? ['- Un număr de telefon, dacă preferați să vorbim. Vă sunăm noi, când aveți timp.'] : []),
     '',
     'Cu aceste informații vă trimitem o recomandare concretă: ce panouri, câte și unde le puneți.',
     '',
