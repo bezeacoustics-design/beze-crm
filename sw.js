@@ -1,5 +1,5 @@
 // V: versiunea fișierelor, aceeași ca „?v=” din index.html (teste/versiune.test.mjs). Se mărește la fiecare publicare.
-const V = 16;
+const V = 17;
 const CACHE = 'beze-crm-v' + V;
 const SHELL = ['./', './index.html', './app.js?v=' + V, './lead.js?v=' + V, './etape.js?v=' + V, './ghid.js?v=' + V, './icon-192.png', './icon-512.png'];
 

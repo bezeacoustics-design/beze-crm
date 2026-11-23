@@ -184,6 +184,7 @@ test('mailul pentru clientul fără telefon: pe „dumneavoastră”, am vrut s�
   }
   assert.ok(mesajEmailFaraTelefon({}).corp.startsWith('Bună ziua!\n\n'));
   assert.ok(mesajEmailFaraTelefon({ tipSpatiu: 'Birou' }).corp.includes('Dimensiunile spațiului'));
+  assert.ok(mesajEmailFaraTelefon({ tipSpatiu: 'Studio sau home studio' }).corp.includes('vizualiza mai bine camera atunci când o proiectăm.'));
 });
 
 // Forma aprobată de Beia pe 23 Nov 2026 (un client real cu birou; aici cu nume inventat).
@@ -200,7 +201,7 @@ test('mailul fără telefon, birou, „nu știu”: exact textul aprobat de Beia
     'Ca să vă facem o recomandare pe măsura spațiului dumneavoastră, avem nevoie de câteva detalii:',
     '',
     '- Dimensiunile spațiului (lungime, lățime, înălțime) și unde sunt ușa și ferestrele, cu dimensiunile lor. Ajunge o schiță de mână pe o foaie, cu cotele trecute pe ea. Dacă aveți un plan al spațiului sau un releveu, e perfect, ne trimiteți direct planul.',
-    '- Câteva poze, din cât mai multe unghiuri, în care să se vadă zona în care stau oamenii și tavanul.',
+    '- Câteva poze, din cât mai multe unghiuri, pentru a putea vizualiza mai bine spațiul atunci când îl proiectăm.',
     '- Un buget orientativ, dacă aveți deja unul în minte. Ne ajută să vă propunem direct varianta potrivită, de la un set de panouri pe care le montați chiar dumneavoastră până la un proiect complet.',
     '- Un număr de telefon, dacă preferați să vorbim. Vă sunăm noi, când aveți timp.',
     '',

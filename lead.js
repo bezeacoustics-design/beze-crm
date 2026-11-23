@@ -232,7 +232,9 @@ function mail(c, faraTelefon) {
     'Ca să vă facem o recomandare pe măsura ' + alLocului + ' dumneavoastră, avem nevoie de câteva detalii:',
     '',
     '- Dimensiunile ' + alLocului + ' (lungime, lățime, înălțime) și unde sunt ușa și ferestrele, cu dimensiunile lor. Ajunge o schiță de mână pe o foaie, cu cotele trecute pe ea. Dacă aveți un plan al ' + alLocului + ' sau un releveu, e perfect, ne trimiteți direct planul.',
-    '- Câteva poze, din cât mai multe unghiuri, în care să se vadă ' + v.pozeScurt + '.',
+    faraTelefon
+      ? '- Câteva poze, din cât mai multe unghiuri, pentru a putea vizualiza mai bine ' + loc + ' atunci când ' + (com ? 'îl' : 'o') + ' proiectăm.'
+      : '- Câteva poze, din cât mai multe unghiuri, în care să se vadă ' + v.pozeScurt + '.',
     ...(faraTelefon ? [] : ['- ' + v.folosire]),
     '- Un buget orientativ, dacă aveți deja unul în minte. Ne ajută să vă propunem direct varianta potrivită, de la un set de panouri pe care le montați chiar dumneavoastră până la un proiect complet.',
     ...(faraTelefon ? ['- Un număr de telefon, dacă preferați să vorbim. Vă sunăm noi, când aveți timp.'] : []),
