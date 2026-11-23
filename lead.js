@@ -258,12 +258,14 @@ function mail(c, faraTelefon) {
 export function mesajEmail(c) { return mail(c, false); }
 export function mesajEmailFaraTelefon(c) { return mail(c, true); }
 
-// Webmail-ul Beze e Roundcube, în cPanel (verificat pe 23 Nov 2026: pagina de login de pe
-// webmail.bezeacoustics.ro e cea din cPanel). Roundcube 1.6 completează un mail nou din _to, _subject
-// și _body din adresă (program/actions/mail/compose.php, rcmail_sendmail.php); un text cu „<”
-// l-ar lua drept HTML, de aceea mesajele nu au „<”. Dacă nu ești logat, cPanel cere parola și
-// după login deschide tot mailul completat (goto_uri din pagina lui de login).
-export const ROUNDCUBE = 'https://webmail.bezeacoustics.ro/3rdparty/roundcube/';
+// Webmail-ul Beze e Roundcube, în cPanel. Adresa e cea pe care o folosește Beia în Safari
+// (cp118.web365.ro:2096, același server ca webmail.bezeacoustics.ro), ca Safari să completeze
+// parola cu amprenta; partea „cpsess…” din adresa lui se schimbă la fiecare login, deci nu intră aici.
+// Roundcube 1.6 completează un mail nou din _to, _subject și _body din adresă
+// (program/actions/mail/compose.php, rcmail_sendmail.php); un text cu „<” l-ar lua drept HTML,
+// de aceea mesajele nu au „<”. Dacă nu ești logat, cPanel cere parola și după login deschide
+// mailul completat (goto_uri din pagina lui de login; verificat pe 23 Nov 2026).
+export const ROUNDCUBE = 'https://cp118.web365.ro:2096/3rdparty/roundcube/';
 export function linkRoundcube(catre, subiect, corp) {
   return ROUNDCUBE + '?_task=mail&_action=compose' +
     '&_to=' + encodeURIComponent(catre || '') +

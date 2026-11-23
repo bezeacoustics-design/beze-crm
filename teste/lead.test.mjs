@@ -187,12 +187,13 @@ test('linkul de Roundcube deschide un mail nou, cu destinatarul, subiectul și t
   const e = mesajEmailFaraTelefon({ nume: 'Ion Test', tipSpatiu: 'Sală de repetiții', problema: 'Bas necontrolat' });
   const u = new URL(linkRoundcube('ion.test+crm@example.com', e.subiect, e.corp));
   assert.equal(u.origin + u.pathname, ROUNDCUBE);
+  assert.equal(ROUNDCUBE, 'https://cp118.web365.ro:2096/3rdparty/roundcube/');
   assert.equal(u.searchParams.get('_task'), 'mail');
   assert.equal(u.searchParams.get('_action'), 'compose');
   assert.equal(u.searchParams.get('_to'), 'ion.test+crm@example.com');
   assert.equal(u.searchParams.get('_subject'), e.subiect);
   assert.equal(u.searchParams.get('_body'), e.corp);
-  // Cel mai lung mail, cu un nume lung: webmail.bezeacoustics.ro a primit pe 23 Nov 2026 linkuri de 12 000 de caractere.
+  // Cel mai lung mail, cu un nume lung: serverul de webmail a primit pe 23 Nov 2026 linkuri de 12 000 de caractere.
   for (const tipSpatiu of TIP_SPATIU) for (const problema of PROBLEMA) {
     const m = mesajEmailFaraTelefon({ nume: 'Alexandru-Constantin Popescu-Ionescu', tipSpatiu, suprafata: 'Peste 40 mp', problema });
     assert.ok(linkRoundcube('alexandru.constantin.popescu@example.com', m.subiect, m.corp).length < 8000);
